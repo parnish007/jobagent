@@ -1,31 +1,29 @@
 # Contributing to Job Agent
 
-Thank you for your interest in contributing! This document explains how to get involved.
+Thank you for your interest in contributing!
 
 ---
 
 ## Before you start
 
 - **Check existing issues** — someone may already be working on it
-- **For large features** — open an issue first to discuss the approach before writing code
+- **For large features** — open an issue first to align on the approach before writing code
 - **For bug fixes** — you can open a PR directly
-- **Read the [README](README.md)** to understand the project architecture
+- **Read the [README](README.md)** to understand the project architecture and data flow
 
 ---
 
 ## Development setup
 
-Follow the [Quick Start](README.md#quick-start) guide. Then:
+Follow the full [Setup Guide](docs/SETUP.md) to get everything running. Then install the extra test dependencies:
 
 ```bash
-# Install backend dev dependencies
-cd backend
+# pwd: jobagent_code/  (virtualenv already activated)
 pip install -r requirements.txt
 pip install pytest pytest-asyncio httpx
 
-# Install frontend dev dependencies
-cd frontend
-npm install
+# Frontend
+cd frontend && npm install
 ```
 
 ---
@@ -34,99 +32,108 @@ npm install
 
 ```
 jobagent_code/
-├── backend/          # FastAPI + LangGraph agents
+├── .env.example          ← all environment variables documented here
+├── requirements.txt      ← single requirements file (backend + MCP server)
+├── backend/
 │   ├── app/
-│   │   ├── agents/   # LangGraph nodes
-│   │   ├── api/v1/   # REST endpoints
-│   │   ├── core/     # Config, DB, security, LLM abstraction
-│   │   ├── models/   # SQLAlchemy models
-│   │   ├── rl/       # RL/DPO training module
-│   │   ├── schemas/  # Pydantic schemas
-│   │   ├── scraping/ # JobSpy + Playwright scrapers
-│   │   └── tasks/    # Celery tasks
-│   └── alembic/      # Database migrations
-├── frontend/         # Next.js 14 dashboard
-│   ├── app/          # Next.js App Router pages
-│   ├── components/   # React components
-│   └── lib/          # API client, Zustand stores
-├── mcp_server/       # FastMCP tools server
-└── docker/           # Docker Compose + init scripts
+│   │   ├── agents/       ← LangGraph nodes (scorer, resume, application, state)
+│   │   ├── api/v1/       ← REST endpoints (auth, jobs, resume, agent)
+│   │   ├── core/         ← config, database, security, LLM abstraction
+│   │   ├── models/       ← SQLAlchemy ORM models
+│   │   ├── rl/           ← reward model, preference collector, DPO trainer
+│   │   ├── schemas/      ← Pydantic request/response schemas
+│   │   ├── scraping/     ← JobSpy scraper + Playwright scraper
+│   │   └── tasks/        ← Celery background tasks
+│   └── alembic/          ← database migrations
+├── frontend/
+│   ├── app/              ← Next.js App Router pages
+│   ├── components/       ← React components
+│   └── lib/              ← API client, Zustand stores, utilities
+├── mcp_server/           ← FastMCP tools server
+└── docker/               ← Docker Compose + init.sql
 ```
 
 ---
 
 ## Making changes
 
-### Backend
+### Backend rules
 
 1. **Never use raw SQL** — always use SQLAlchemy ORM
-2. **Never block the event loop** — all DB/network operations must be `async`/`await`
-3. **Always add input validation** via Pydantic schemas
-4. **Add database migrations** for any model changes:
+2. **Never block the event loop** — all DB/network calls must use `async`/`await`
+3. **Always validate inputs** via Pydantic schemas
+4. **Create a migration for every model change:**
    ```bash
-   # Create a new migration
+   # pwd: jobagent_code/backend/
    alembic revision --autogenerate -m "describe your change"
-   # Apply it
    alembic upgrade head
    ```
 5. **Use the LLM abstraction** (`app.core.llm`) — never import `anthropic` or `google.generativeai` directly in business logic
 
-### Frontend
+### Frontend rules
 
-1. Use `@tanstack/react-query` for all server state
+1. Use `@tanstack/react-query` for all server state (fetching, mutations, caching)
 2. Use Zustand (`lib/store.ts`) for global client state
 3. Follow the existing Tailwind + dark theme conventions
-4. All pages in `app/dashboard/` are client components (`"use client"`)
+4. All pages under `app/dashboard/` are client components (`"use client"`)
 
 ### Adding a new LLM provider
 
-1. Add the API key to `core/config.py`
-2. Implement `_call_<provider>()` in `core/llm.py`
-3. Add the provider name to `SUPPORTED_PROVIDERS`
-4. Add the option to the Settings page LLM selector
+1. Add the API key variable to `backend/app/core/config.py`
+2. Implement `_call_<provider>()` in `backend/app/core/llm.py`
+3. Add the provider name to `SUPPORTED_PROVIDERS` in `llm.py`
+4. Add the option to the Settings page LLM selector (`frontend/app/dashboard/settings/page.tsx`)
+5. Document the new key in `.env.example`
 
 ---
 
-## Testing
+## Running tests
 
 ```bash
-# Backend
+# Backend — run from backend/ directory
 cd backend
 pytest tests/ -v
 
-# Frontend type check
+# Frontend — type check
 cd frontend
 npx tsc --noEmit
 
-# Frontend lint
+# Frontend — lint
 npm run lint
 ```
 
-We don't have full coverage yet — writing tests is a great first contribution!
+Coverage is not yet comprehensive — writing tests is one of the best ways to contribute.
 
 ---
 
 ## Submitting a PR
 
-1. Fork the repo and create a branch from `main`: `git checkout -b feat/my-feature`
+1. Fork the repo and create a branch from `main`:
+   ```bash
+   git checkout -b feat/my-feature
+   # or
+   git checkout -b fix/the-bug
+   ```
 2. Make your changes following the conventions above
-3. Run tests and type checks locally
+3. Run tests and type checks locally (see above)
 4. Push and open a PR using the [PR template](.github/PULL_REQUEST_TEMPLATE.md)
-5. Fill out the PR template completely — incomplete PRs will not be reviewed
+5. Fill out the PR template completely — PRs without a description will not be reviewed
 
 ---
 
 ## Code style
 
-- **Python**: PEP 8, type hints everywhere, docstrings on public functions
-- **TypeScript**: Strict mode, no `any` except where unavoidable
-- **Commits**: Descriptive messages (`feat: add Gemini support`, `fix: websocket reconnect`)
+| Language | Rules |
+|----------|-------|
+| Python | PEP 8, type hints on all functions, docstrings on public APIs |
+| TypeScript | Strict mode, avoid `any` |
+| Commits | Conventional format — `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...` |
 
 ---
 
 ## Getting help
 
-- Open a [GitHub Discussion](https://github.com/parnish007/jobagent/discussions) for questions
-- Tag issues with `help wanted` if you'd like community input
+- [GitHub Discussions](https://github.com/parnish007/jobagent/discussions) for questions
+- Tag issues with `help wanted` to invite community input
 
-Thank you for contributing! 🙏
+Thank you for contributing!

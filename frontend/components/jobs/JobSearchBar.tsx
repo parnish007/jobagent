@@ -14,7 +14,7 @@ const PRESETS = [
   { key: "part_time",   label: "Part-time",    emoji: "🕐" },
 ] as const;
 
-const SITES = ["linkedin", "indeed", "glassdoor", "zip_recruiter"] as const;
+const SITES = ["linkedin", "indeed", "glassdoor", "zip_recruiter", "google"] as const;
 
 interface JobSearchBarProps {
   onScraped?: () => void;

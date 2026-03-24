@@ -14,7 +14,7 @@ async def scrape_jobs(
 ) -> list[dict[str, Any]]:
     """Scrape jobs using JobSpy across multiple boards."""
     if sites is None:
-        sites = ["linkedin", "indeed", "glassdoor", "zip_recruiter"]
+        sites = ["linkedin", "indeed", "glassdoor", "zip_recruiter", "google"]
 
     # JobSpy is synchronous — run in thread pool
     loop = asyncio.get_event_loop()

@@ -2,20 +2,23 @@
 
 Step-by-step instructions for running Job Agent locally on macOS, Linux, or Windows.
 
+> **TL;DR for experienced developers**: see the [Quick Start](../README.md#quick-start) in the README.
+
 ---
 
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [1. Environment Setup](#1-environment-setup)
-- [2. Infrastructure (Docker)](#2-infrastructure-docker)
-- [3. Backend](#3-backend)
-- [4. Frontend](#4-frontend)
-- [5. Celery Worker](#5-celery-worker)
-- [6. MCP Server (optional)](#6-mcp-server-optional)
+- [1. Environment variables](#1-environment-variables)
+- [2. Python environment](#2-python-environment)
+- [3. Infrastructure — Docker](#3-infrastructure--docker)
+- [4. Backend — migrations and API](#4-backend--migrations-and-api)
+- [5. Frontend](#5-frontend)
+- [6. Celery worker](#6-celery-worker)
+- [7. MCP server (optional)](#7-mcp-server-optional)
 - [Verification](#verification)
-- [Common Issues](#common-issues)
-- [Resetting the Database](#resetting-the-database)
+- [Common issues](#common-issues)
+- [Resetting the database](#resetting-the-database)
 
 ---
 
@@ -23,188 +26,194 @@ Step-by-step instructions for running Job Agent locally on macOS, Linux, or Wind
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| Docker Desktop | 4.x+ | Includes Docker Compose v2 |
+| Docker Desktop | 4.x+ | Must be running before step 3 |
 | Python | 3.12+ | Use `pyenv` or system Python |
-| Node.js | 20+ | LTS recommended |
+| Node.js | 20 LTS | For the frontend |
 | Git | Any | — |
 
-**API Keys needed:**
-- **Anthropic API key** — required. Get one at [console.anthropic.com](https://console.anthropic.com)
-- Everything else is optional (see [CONFIGURATION.md](CONFIGURATION.md))
+**API keys needed (at least one):**
+- **Anthropic** — [console.anthropic.com](https://console.anthropic.com) (Claude — recommended)
+- **Google AI Studio** — [aistudio.google.com](https://aistudio.google.com) (Gemini — optional)
 
 ---
 
-## 1. Environment Setup
+## 1. Environment variables
 
 ```bash
-# Clone the repo (adjust to your URL)
+# pwd: jobagent_code/
 git clone https://github.com/parnish007/jobagent.git
 cd jobagent/jobagent_code
 
-# Copy the env template
-cp docker/.env.example docker/.env
+cp .env.example .env
 ```
 
-Open `docker/.env` in your editor and fill in at minimum:
+Open `.env` and fill in **at minimum**:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-...        # your Anthropic key
 SECRET_KEY=some-random-32-char-string-here
 ```
 
-To generate a secure SECRET_KEY:
+To generate a secure `SECRET_KEY`:
+
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
+All available variables and their defaults are documented directly in [`.env.example`](../.env.example).
+
 ---
 
-## 2. Infrastructure (Docker)
+## 2. Python environment
 
-Start PostgreSQL 16 (with pgvector) and Redis:
+One virtualenv at the repo root covers the backend, agents, and MCP server.
 
 ```bash
-cd docker
-docker compose up -d
+# pwd: jobagent_code/
+python -m venv .venv
 ```
 
-Verify both containers are healthy:
+**Activate it:**
+
+| Platform | Command |
+|----------|---------|
+| macOS / Linux | `source .venv/bin/activate` |
+| Windows (PowerShell) | `.venv\Scripts\Activate.ps1` |
+| Windows (cmd) | `.venv\Scripts\activate.bat` |
+
+**Install all dependencies:**
+
 ```bash
-docker compose ps
+pip install -r requirements.txt
+```
+
+**Install Playwright browser:**
+
+```bash
+playwright install chromium --with-deps
+```
+
+> On Linux, `--with-deps` installs required system packages. On macOS/Windows it is optional but recommended.
+
+---
+
+## 3. Infrastructure — Docker
+
+Make sure Docker Desktop is running, then from the repo root:
+
+```bash
+# pwd: jobagent_code/
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+```
+
+Check both containers are healthy:
+
+```bash
+docker compose -f docker/docker-compose.yml ps
 ```
 
 Expected output:
+
 ```
 NAME                    STATUS
 jobagent_postgres       Up (healthy)
 jobagent_redis          Up (healthy)
 ```
 
-> The `init.sql` file automatically enables the `vector` and `uuid-ossp` PostgreSQL extensions on first start. You do not need to do this manually.
+> The `docker/init.sql` file automatically enables the `vector` and `uuid-ossp` PostgreSQL extensions on first start.
 
-### Optional: pgAdmin
+### Optional: pgAdmin (database GUI)
 
-If you want a database GUI:
 ```bash
-docker compose --profile tools up -d
+docker compose --env-file .env -f docker/docker-compose.yml --profile tools up -d
 ```
 
 pgAdmin will be at `http://localhost:5050`
 - Email: `admin@jobagent.local`
 - Password: `admin`
-- Add server: host `postgres`, port `5432`, user/password from your `.env`
+- Add server → host: `postgres`, port: `5432`, user/password from your `.env`
 
 ---
 
-## 3. Backend
+## 4. Backend — migrations and API
 
-### Create a virtual environment
+> **This section runs in Terminal 1. Leave it running.**
 
-```bash
-cd ../backend
-python -m venv .venv
-```
-
-Activate it:
-- **macOS/Linux**: `source .venv/bin/activate`
-- **Windows (PowerShell)**: `.venv\Scripts\Activate.ps1`
-- **Windows (cmd)**: `.venv\Scripts\activate.bat`
-
-### Install dependencies
+The virtualenv is at the repo root, but `alembic` and `uvicorn` must be run from the `backend/` directory because `alembic.ini` and the app module are there.
 
 ```bash
-pip install -r requirements.txt
-```
+# pwd: jobagent_code/  →  cd into backend
+cd backend
 
-### Install Playwright browsers
-
-```bash
-playwright install chromium --with-deps
-```
-
-> On Linux, `--with-deps` installs system dependencies. On macOS/Windows it's optional but recommended.
-
-### Configure environment
-
-The backend reads from a `.env` file in the `backend/` directory. You can either:
-
-**Option A** — copy from docker:
-```bash
-cp ../docker/.env .env
-```
-
-**Option B** — create a minimal `.env`:
-```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/jobagent
-REDIS_URL=redis://localhost:6379
-ANTHROPIC_API_KEY=sk-ant-...
-SECRET_KEY=your-secret-key
-```
-
-### Run database migrations
-
-```bash
+# Run database migrations
 alembic upgrade head
 ```
 
 Expected output:
+
 ```
 INFO  [alembic.runtime.migration] Running upgrade  -> 001, Initial schema
+INFO  [alembic.runtime.migration] Running upgrade 001 -> 002, add llm search fields
 ```
 
-### Start the API server
+Start the API server:
 
 ```bash
+# pwd: jobagent_code/backend/
 uvicorn app.main:app --reload --port 8000
 ```
 
 The API is now available at:
-- **API base**: `http://localhost:8000/api/v1`
-- **Interactive docs (Swagger)**: `http://localhost:8000/docs`
-- **Alternative docs (ReDoc)**: `http://localhost:8000/redoc`
-- **Health check**: `http://localhost:8000/health`
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:8000/api/v1` | API base |
+| `http://localhost:8000/docs` | Swagger UI (dev only) |
+| `http://localhost:8000/redoc` | ReDoc (dev only) |
+| `http://localhost:8000/health` | Health check |
 
 ---
 
-## 4. Frontend
+## 5. Frontend
 
-Open a new terminal:
+> **Open Terminal 2 (new terminal window).**
 
 ```bash
+# pwd: jobagent_code/frontend/
 cd frontend
+
+# Copy the frontend env file (only needed once)
+cp ../.env.example .env.local
+# Default values (NEXT_PUBLIC_API_URL=http://localhost:8000) work for local dev
+
 npm install
-```
-
-Create a frontend env file:
-```bash
-# frontend/.env.local
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_WS_URL=ws://localhost:8000
-```
-
-Start the development server:
-```bash
 npm run dev
 ```
 
-Dashboard available at `http://localhost:3000`
+Dashboard available at `http://localhost:3000`.
 
 ---
 
-## 5. Celery Worker
+## 6. Celery worker
 
-Open another terminal and activate the backend virtualenv again:
+> **Open Terminal 3 (new terminal window). Leave it running alongside Terminal 1.**
+
+Celery handles all long-running background tasks (scraping, scoring, resume generation, submission). It **must** be running for the agent to work.
 
 ```bash
-cd backend
-source .venv/bin/activate   # or Windows equivalent
+# pwd: jobagent_code/  →  activate venv first, then cd backend
+source .venv/bin/activate    # macOS/Linux
+# .venv\Scripts\activate     # Windows
 
+cd backend
 celery -A app.core.celery_app worker --pool=solo --loglevel=info
 ```
 
-> **Windows**: `--pool=solo` is required. On macOS/Linux you can use `--pool=prefork -c 4` for concurrent task execution.
+> **Windows:** `--pool=solo` is required.
+> **macOS/Linux:** you can use `--pool=prefork -c 4` for concurrent task execution.
 
 You should see:
+
 ```
 [tasks]
   . agent_tasks.run_full_agent
@@ -212,28 +221,30 @@ You should see:
   . agent_tasks.run_scrape_task
   . agent_tasks.run_submit_task
 
-[2026-03-23 ...] celery@hostname ready.
+celery@hostname ready.
 ```
 
 ---
 
-## 6. MCP Server (optional)
+## 7. MCP server (optional)
 
 The MCP server exposes agent tools to external AI systems via the Model Context Protocol.
 
 ```bash
+# pwd: jobagent_code/mcp_server/
+# No extra install needed — mcp and fastmcp are already in requirements.txt
 cd mcp_server
-pip install -r requirements.txt
 python server.py
 ```
 
-To use with Claude Desktop, add to your MCP config:
+To use with Claude Desktop, add to your MCP config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
 ```json
 {
   "mcpServers": {
     "jobagent": {
       "command": "python",
-      "args": ["/path/to/jobagent_code/mcp_server/server.py"]
+      "args": ["/absolute/path/to/jobagent_code/mcp_server/server.py"]
     }
   }
 }
@@ -243,98 +254,138 @@ To use with Claude Desktop, add to your MCP config:
 
 ## Verification
 
-Once all services are running, run through this checklist:
+Once all services are running, verify everything works end to end:
 
-### Backend health
+### 1. Backend health
+
 ```bash
 curl http://localhost:8000/health
-# → {"status": "ok", "service": "Job Agent"}
+# Expected: {"status": "ok", "service": "Job Agent"}
 ```
 
-### Register a test account
+### 2. Register a test account
+
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "testpass123", "full_name": "Your Name"}'
 ```
 
-### Login and get a token
+### 3. Login and get a token
+
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "testpass123"}'
-# → {"access_token": "...", "token_type": "bearer"}
+# Expected: {"access_token": "...", "token_type": "bearer"}
 ```
 
-### Trigger a test scrape
+### 4. Trigger a test scrape
+
 ```bash
-TOKEN="your-token-here"
+TOKEN="paste-your-access-token-here"
 curl -X POST http://localhost:8000/api/v1/jobs/scrape \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"search_query": "python developer", "location": "Remote", "results_wanted": 5}'
 ```
 
-### Frontend
-Open `http://localhost:3000` — you should see the dashboard (it will redirect to login).
+### 5. Frontend
+
+Open `http://localhost:3000` — should redirect to the login page.
 
 ---
 
-## Common Issues
+## Common issues
 
 ### `asyncpg: could not connect to server`
-The PostgreSQL container isn't ready yet. Wait a few seconds and retry, or check:
+
+PostgreSQL isn't ready or not running. Check:
+
 ```bash
-docker compose ps       # postgres should show (healthy)
-docker compose logs postgres
+docker compose -f docker/docker-compose.yml ps
+# postgres should show: Up (healthy)
+
+docker compose -f docker/docker-compose.yml logs postgres
 ```
 
-### `alembic: can't find revision`
-Make sure you're running alembic from the `backend/` directory, not from `backend/alembic/`:
+If the container isn't running, start it again:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+```
+
+---
+
+### `alembic: can't find revision` or `ModuleNotFoundError`
+
+Alembic must be run from the `backend/` directory (not from `backend/alembic/` and not from the repo root):
+
 ```bash
 cd backend
 alembic upgrade head
 ```
 
+---
+
 ### `playwright: executable doesn't exist`
-Re-run the install command:
+
+Re-run the browser install (with the virtualenv activated):
+
 ```bash
 playwright install chromium --with-deps
 ```
 
+---
+
 ### `celery: No module named 'app'`
-Celery must be started from the `backend/` directory with the virtualenv activated:
+
+Celery must be started from the `backend/` directory with the virtualenv already activated. Order matters:
+
 ```bash
-cd backend && source .venv/bin/activate
+# Correct order:
+source .venv/bin/activate    # 1. activate venv (from jobagent_code/)
+cd backend                   # 2. then cd into backend
 celery -A app.core.celery_app worker --pool=solo
-```
-
-### Frontend shows blank page / 401 errors
-Check that:
-1. The backend is running on port 8000
-2. `NEXT_PUBLIC_API_URL` in `frontend/.env.local` points to `http://localhost:8000`
-3. You're logged in (token stored in `localStorage`)
-
-### pgvector extension error on migration
-The Docker image `pgvector/pgvector:pg16` includes the extension, and `init.sql` enables it automatically. If you're using a non-pgvector Postgres image, you'll need to enable it manually:
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
 ---
 
-## Resetting the Database
+### Frontend shows blank page or 401 errors
 
-To wipe all data and start fresh:
+Check:
+1. Backend is running on port 8000 (`curl http://localhost:8000/health`)
+2. `frontend/.env.local` exists and contains `NEXT_PUBLIC_API_URL=http://localhost:8000`
+3. You're logged in (JWT stored in `localStorage` — try logging out and back in)
+
+---
+
+### pgvector extension error on migration
+
+The Docker image `pgvector/pgvector:pg16` includes the extension, and `docker/init.sql` enables it automatically on first container start.
+
+If you're using a non-pgvector Postgres image, enable it manually:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+```
+
+---
+
+## Resetting the database
+
+To wipe all data and start fresh (runs from the repo root):
 
 ```bash
-# Stop services
-docker compose down -v    # -v removes volumes including postgres data
+# pwd: jobagent_code/
 
-# Restart infra
-docker compose up -d
+# 1. Stop everything and delete volumes
+docker compose --env-file .env -f docker/docker-compose.yml down -v
 
-# Re-run migrations
-cd ../backend
-alembic upgrade head
+# 2. Start fresh containers
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+
+# 3. Re-run migrations
+cd backend && alembic upgrade head
 ```

@@ -1,15 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, DragEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
-import { Save, RefreshCw, ThumbsUp, ThumbsDown, Brain, CheckCircle2 } from "lucide-react";
+import { Save, RefreshCw, ThumbsUp, ThumbsDown, Brain, CheckCircle2, Upload, FileText, X } from "lucide-react";
 
 export default function ResumePage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"base" | "rl">("base");
   const [content, setContent] = useState("");
   const [view, setView] = useState<"edit" | "preview">("edit");
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Base resume
   const { data, isLoading } = useQuery({
@@ -28,6 +31,34 @@ export default function ResumePage() {
     mutationFn: (text: string) => api.put("/resume", { content: text }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["resume"] }),
   });
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await api.post("/resume/upload?save=false", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data as { content: string; filename: string };
+    },
+    onSuccess: (data) => {
+      setContent(data.content);
+      setUploadedFile(data.filename);
+    },
+  });
+
+  const handleFileDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) upload.mutate(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) upload.mutate(file);
+    e.target.value = "";
+  };
 
   const trainDpo = useMutation({
     mutationFn: () => api.post("/resume/rl/train"),
@@ -68,10 +99,59 @@ export default function ResumePage() {
       {/* Base resume editor */}
       {activeTab === "base" && (
         <div className="space-y-4">
+          {/* Upload zone */}
+          <div
+            className={`relative rounded-xl border-2 border-dashed transition-colors ${
+              dragOver ? "border-violet-500 bg-violet-500/5" : "border-border hover:border-border/80"
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleFileDrop}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".md,.txt,.pdf,.docx"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <button
+              type="button"
+              className="w-full flex items-center justify-center gap-3 px-4 py-4 text-sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={upload.isPending}
+            >
+              {upload.isPending ? (
+                <RefreshCw size={15} className="animate-spin text-violet-400" />
+              ) : (
+                <Upload size={15} className="text-muted-foreground" />
+              )}
+              <span className="text-muted-foreground">
+                {upload.isPending
+                  ? "Extracting text…"
+                  : "Upload resume — drag & drop or click to browse (.pdf, .docx, .md, .txt)"}
+              </span>
+            </button>
+            {uploadedFile && !upload.isPending && (
+              <div className="absolute top-2 right-2 flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-1">
+                <FileText size={11} />
+                {uploadedFile}
+                <button onClick={() => setUploadedFile(null)} className="hover:text-emerald-200 ml-0.5">
+                  <X size={11} />
+                </button>
+              </div>
+            )}
+            {upload.isError && (
+              <p className="text-xs text-red-400 text-center pb-2">
+                Upload failed — check file type and size (max 5 MB).
+              </p>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               This is your base resume. The AI uses it to generate tailored versions for each job.
-              Write it in Markdown format.
+              Write it in Markdown format or upload a file above.
             </p>
             <div className="flex gap-2">
               <button

@@ -1,59 +1,123 @@
 # How to Use Job Agent
 
-> A practical, step-by-step guide to get from zero to submitting your first application.
+> A practical step-by-step guide — from zero to submitting your first application.
 
 ---
 
 ## Step 0 — Install and start everything
 
 ### Requirements
-- Python 3.12+
-- Node.js 20+
-- Docker Desktop running
+
+| Tool | Version | Where to get it |
+|------|---------|----------------|
+| Python | 3.12+ | python.org |
+| Node.js | 20+ | nodejs.org |
+| Docker Desktop | 4.x+ | docker.com |
+| Anthropic or Gemini API key | — | console.anthropic.com or aistudio.google.com |
+
+---
 
 ### One-time setup
 
+**1. Clone the repo**
+
 ```bash
-# 1. Clone the repo
 git clone https://github.com/parnish007/jobagent.git
 cd jobagent/jobagent_code
-
-# 2. Copy and fill environment variables
-cp docker/.env.example docker/.env
+# All remaining commands use jobagent_code/ as the root unless stated otherwise
 ```
 
-Open `docker/.env` and set at minimum:
-
-```env
-ANTHROPIC_API_KEY=sk-ant-...       # Get from console.anthropic.com
-# OR
-GEMINI_API_KEY=AIza...             # Get from aistudio.google.com
-
-SECRET_KEY=any-random-32-char-string-here
-```
+**2. Configure environment**
 
 ```bash
-# 3. Start PostgreSQL + Redis
-cd docker && docker compose up -d && cd ..
+# pwd: jobagent_code/
+cp .env.example .env
+```
 
-# 4. Set up backend
-cd backend
+Open `.env` and fill in at minimum:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...    # from console.anthropic.com
+# OR
+GEMINI_API_KEY=AIza...          # from aistudio.google.com
+
+SECRET_KEY=any-random-32-char-string-here
+# Generate one: python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+**3. Install Python dependencies** (one virtualenv covers everything)
+
+```bash
+# pwd: jobagent_code/
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+
+# Activate:
+source .venv/bin/activate      # macOS / Linux
+.venv\Scripts\activate         # Windows
+
 pip install -r requirements.txt
 playwright install chromium --with-deps
+```
+
+**4. Set up the frontend env file**
+
+```bash
+# pwd: jobagent_code/
+cp frontend/.env.example frontend/.env.local
+# Default values work for local development — no changes needed
+```
+
+---
+
+### Starting the services
+
+You need **3 terminals** open at the same time. Do these in order:
+
+---
+
+**Terminal 1 — Database + API**
+
+```bash
+# pwd: jobagent_code/
+# Start PostgreSQL and Redis
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+
+# Move into backend and run migrations
+cd backend
 alembic upgrade head
+
+# Start the API server (leave this running)
 uvicorn app.main:app --reload --port 8000
+```
 
-# 5. Start Celery worker (new terminal, same folder)
-.venv\Scripts\activate
+> API is ready at `http://localhost:8000` · Swagger docs at `http://localhost:8000/docs`
+
+---
+
+**Terminal 2 — Celery worker** (handles background agent tasks)
+
+```bash
+# pwd: jobagent_code/  ← start here, then cd backend
+source .venv/bin/activate    # macOS/Linux
+# .venv\Scripts\activate     # Windows
+
+cd backend
 celery -A app.core.celery_app worker --pool=solo --loglevel=info
+# Leave this running
+```
 
-# 6. Start frontend (new terminal)
+> Windows must use `--pool=solo`. macOS/Linux can use `--pool=prefork -c 4` instead.
+
+---
+
+**Terminal 3 — Frontend**
+
+```bash
+# pwd: jobagent_code/frontend/
 cd frontend
 npm install
 npm run dev
+# Leave this running
 ```
 
 Open **http://localhost:3000** ✓
@@ -62,36 +126,57 @@ Open **http://localhost:3000** ✓
 
 ## Step 1 — Create your account
 
-1. Click **Sign up**
-2. Enter email + password (8+ characters, must include a number)
-3. You're in
+1. Go to [http://localhost:3000](http://localhost:3000)
+2. Click **Sign up**
+3. Enter email + password (min 8 characters, must include a number)
 
 ---
 
-## Step 2 — Set up your profile (Settings)
+## Step 2 — Set up your profile
 
-Go to **Settings** in the sidebar. This is the most important step — the AI uses your profile to score every job.
+Go to **Settings** in the sidebar. The AI uses your profile to score every job — the more detail you provide, the better the matches.
 
-### Fill in each section:
+### Target Roles *(most important)*
 
-**AI Model**
-- Choose **Claude** (recommended, best quality) or **Gemini** (faster)
-- Make sure the matching API key is set in your `.env`
+Type the exact roles you want and press **Enter** after each one. Each role becomes a chip:
 
-**Default Job Search**
-- Set a search query like `Python Developer` or `React Engineer`
-- Set your preferred location (`Remote`, `London`, `New York`)
-- Pick a job type (Full-time / Internship / Contract / etc.)
-- Choose which job boards to search
+```
+Senior Backend Engineer   ×
+ML Engineer               ×
+Platform Engineer         ×
+```
 
-**Job Preferences**
-- **Target titles**: `Software Engineer, Backend Developer` (comma-separated)
-- **Skills**: everything you know — `Python, React, PostgreSQL, Docker, AWS` — be comprehensive, the AI uses this for scoring
-- **Salary range**: optional but useful for filtering
-- Check **Remote only** if you only want remote roles
+### AI Model
 
-**Base Resume** (do this in the Resume tab)
-Go to **Resume** in the sidebar. Paste your resume in **Markdown format**:
+Choose **Claude** (recommended — better reasoning) or **Gemini** (faster, lower cost). Make sure the matching API key is set in your `.env`.
+
+### Default Job Search
+
+- **Search query** — used when you click **Run Agent** (e.g. `Python Developer`)
+- **Location** — `Remote`, `London`, `New York`, etc.
+- **Job type** — Full-time / Internship / Contract / etc.
+- **Sources** — pick which job boards to scrape (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google Jobs)
+- **Results** — how many jobs to fetch per run (20–30 is a good starting point)
+
+### Job Preferences
+
+- **Skills** — list everything you know: `Python, React, PostgreSQL, Docker, AWS` — be comprehensive, the AI matches these against job descriptions
+- **Salary range** — optional but useful for filtering
+- **Remote only** — check this if you only want remote roles
+
+Hit **Save Changes** when done.
+
+---
+
+### Set up your base resume
+
+Go to **Resume** in the sidebar.
+
+**Option A — Upload a file**
+
+Drag and drop (or click to browse) your existing resume. Supported formats: `.pdf`, `.docx`, `.md`, `.txt`. The AI extracts the text automatically.
+
+**Option B — Type it in Markdown**
 
 ```markdown
 # Your Name
@@ -102,38 +187,37 @@ email@example.com | linkedin.com/in/you | github.com/you
 
 ## Experience
 ### Job Title — Company (2022–present)
-- Achievement with a number
+- Achievement with a measurable result
 - Another achievement
 
 ## Skills
 Python, React, PostgreSQL, Docker, AWS
 
 ## Education
-Degree — University, Year
+B.Sc. Computer Science — University, 2020
 ```
 
 Click **Save**.
-
-Hit **Save Changes** in Settings when done.
 
 ---
 
 ## Step 3 — Find jobs
 
-On the **Dashboard**, use the **Find Jobs** search bar:
+On the **Dashboard**, use the search bar:
 
-| What you want | How to do it |
-|--------------|-------------|
-| Any job | Type a title, click Search |
-| Internships | Click 🎓 **Internship** preset chip |
-| Entry-level jobs | Click 🌱 **Entry Level** |
-| Senior roles | Click ⚡ **Senior** |
-| Remote only | Click 🌍 **Remote Only** |
-| Contract work | Click 📋 **Contract** |
+| What you want | How |
+|--------------|-----|
+| Any job | Type a title → click Search |
+| Internships | Click 🎓 **Internship** preset |
+| Entry-level | Click 🌱 **Entry Level** preset |
+| Senior roles | Click ⚡ **Senior** preset |
+| Remote only | Click 🌍 **Remote Only** preset |
+| Contract | Click 📋 **Contract** preset |
+| Custom | Click **Advanced** to pick sources and result count |
 
-Or click **Run Agent** in the sidebar to use your default search config.
+Or click **Run Agent** in the sidebar to use your saved default search.
 
-The scrape takes 30–120 seconds. You'll see the agent status update in the top bar.
+The scrape takes 30–120 seconds. The agent status bar at the top shows live progress.
 
 ---
 
@@ -143,33 +227,32 @@ After scraping, go to **Jobs** in the sidebar.
 
 Each card shows:
 - Job title, company, location
-- **Score** (0–100) — how well it matches your profile
-  - 🟢 75+ = strong match
-  - 🟡 55–74 = moderate match
-  - 🔴 <55 = weak match
-- AI reasoning (1–2 sentences)
+- **Score** (0–100) — match quality against your profile
+  - 🟢 75+ → strong match
+  - 🟡 55–74 → moderate match
+  - 🔴 <55 → weak match
+- 1–2 sentence AI reasoning
 
-**Click any card** to open the full detail panel showing matched/missing skills and the full job description.
+**Click any card** to open the detail panel — shows matched skills, missing skills, and the full job description.
 
-**Approve** jobs you want to apply for. **Reject** the rest.
-
-> You can also use the **Jobs** tab to filter by status (Pending Review / Approved / Rejected).
+**Approve** jobs you want to apply for. **Reject** the rest. The agent generates a tailored resume for every job you approve.
 
 ---
 
-## Step 5 — Review your tailored resumes
+## Step 5 — Review tailored resumes
 
-After approving jobs, the agent generates a custom resume for each one. Go to **Resume** in the sidebar.
+Go to **Resume** in the sidebar. Each approved job has a draft that:
 
-For each approved job you'll see a draft that:
-- Emphasises your skills that match this role
+- Highlights your skills that match this role
 - Incorporates keywords from the job description
-- Adjusts your summary to address this specific company
+- Adjusts your summary to speak to this company
 
 **What to do:**
 1. Read through the draft
-2. Edit anything you want (your edits are saved as AI training data)
-3. Click **Save** to confirm it for submission
+2. Edit anything that doesn't sound like you
+3. Click **Save** — the edited version becomes your AI training data
+
+> Every edit you make teaches the AI your writing style. After 50+ edits, you can trigger DPO fine-tuning from the **AI Training** tab.
 
 ---
 
@@ -178,10 +261,10 @@ For each approved job you'll see a draft that:
 Go to **Applications** for the Kanban view:
 
 ```
-Draft → Resume Ready → Submitted → Responded → Interview → Offer/Rejected
+Draft → Resume Ready → Submitted → Responded → Interview → Offer / Rejected
 ```
 
-When you hear back from a company, open the application and record the outcome. This data helps the AI improve.
+When you hear back from a company, open the card and record the outcome. Interview and offer signals feed back into the AI scoring over time.
 
 ---
 
@@ -189,49 +272,41 @@ When you hear back from a company, open the application and record the outcome. 
 
 Go to **Analytics** to see:
 - Applications by status
-- Interview rate
-- Offer rate
+- Interview rate over time
+- Offer rate over time
 
-The more you use it, the more useful this becomes.
+The more you use it, the more useful the trends become.
 
 ---
 
-## Quick tips
+## Daily workflow (once set up)
 
-**Getting better scores:**
+1. Click **Run Agent** (uses your saved default search)
+2. Review ~20 scored jobs — takes 2–3 minutes
+3. Approve the best matches
+4. Skim the generated resumes — edit anything off
+5. Done — applications submit automatically after your review
+
+---
+
+## Tips for better results
+
+**Better scores:**
 - Add more skills to your profile — the AI can only match what it knows about you
-- Write a detailed base resume — the AI tailors what you give it
+- Be specific with Target Roles — `Senior Backend Engineer` scores better than just `Engineer`
 
-**Getting better resumes:**
-- Edit the AI drafts when they're not quite right — every edit trains the AI
-- After 50+ edits/ratings, go to **Resume → AI Training** and click **Start DPO Training**
+**Better resumes:**
+- Edit AI drafts when they're not quite right — every edit trains the model
+- Go to **Resume → AI Training → Start DPO Training** after 50+ edits
 
-**Running efficiently:**
-- Set your default search config in Settings so **Run Agent** just works
-- Use presets to quickly find niche job types
-- Set auto-approve threshold to 85+ if you trust the AI scoring
-
-**Daily workflow once set up:**
-1. Click **Run Agent**
-2. Review ~20 scored jobs (2–3 min)
-3. Approve the best ones
-4. Quickly review generated resumes, edit if needed
-5. Done — applications are submitted automatically
-
----
-
-## Keyboard shortcuts (coming soon)
-
-| Key | Action |
-|-----|--------|
-| `A` | Approve selected job |
-| `R` | Reject selected job |
-| `→` / `←` | Next / previous job |
+**Efficiency:**
+- Set your default search in Settings so **Run Agent** just works
+- Set auto-approve threshold to 80+ if you trust the scoring
 
 ---
 
 ## Need help?
 
-- 📖 Full docs: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+- 📖 Detailed setup: [docs/SETUP.md](docs/SETUP.md)
 - 🐛 Bug report: [github.com/parnish007/jobagent/issues](https://github.com/parnish007/jobagent/issues)
 - 💬 Questions: [github.com/parnish007/jobagent/discussions](https://github.com/parnish007/jobagent/discussions)

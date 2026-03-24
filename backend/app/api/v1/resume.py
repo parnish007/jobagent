@@ -1,6 +1,7 @@
-"""Resume API routes — base resume, tailored drafts, RL preference collection, DPO training status."""
+"""Resume API routes — base resume, upload, tailored drafts, RL preference collection, DPO training status."""
+import io
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,7 +14,91 @@ from app.api.deps import get_current_user
 router = APIRouter(prefix="/resume", tags=["resume"])
 
 
+# ─── Resume file parsing helpers ─────────────────────────────────────────────
+
+def _extract_pdf_text(contents: bytes) -> str:
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(contents))
+    return "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()
+
+
+def _extract_docx_text(contents: bytes) -> str:
+    from docx import Document
+    doc = Document(io.BytesIO(contents))
+    lines: list[str] = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            lines.append("")
+            continue
+        style = para.style.name if para.style else ""
+        if "Heading 1" in style:
+            lines.append(f"# {text}")
+        elif "Heading 2" in style:
+            lines.append(f"## {text}")
+        elif "Heading 3" in style:
+            lines.append(f"### {text}")
+        else:
+            lines.append(text)
+    return "\n".join(lines).strip()
+
+
 # ─── Base resume ──────────────────────────────────────────────────────────────
+
+@router.post("/upload")
+async def upload_resume(
+    file: UploadFile = File(...),
+    save: bool = Query(False, description="Save extracted text as base resume immediately"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a resume file and extract its text.
+
+    Supported formats:
+    - **.md / .txt** — returned as-is
+    - **.pdf** — text extracted with pypdf
+    - **.docx** — text extracted and converted to Markdown headings
+
+    Pass `?save=true` to automatically store the result as the base resume.
+    """
+    filename = file.filename or ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext not in ("pdf", "docx", "md", "txt"):
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Accepted: .pdf, .docx, .md, .txt",
+        )
+
+    contents = await file.read()
+    if len(contents) > 5 * 1024 * 1024:  # 5 MB limit
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 5 MB.")
+
+    if ext in ("md", "txt"):
+        text = contents.decode("utf-8", errors="replace")
+    elif ext == "pdf":
+        try:
+            text = _extract_pdf_text(contents)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Could not parse PDF: {exc}") from exc
+    else:  # docx
+        try:
+            text = _extract_docx_text(contents)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"Could not parse DOCX: {exc}") from exc
+
+    if save:
+        result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
+        profile = result.scalar_one_or_none()
+        if not profile:
+            profile = UserProfile(user_id=current_user.id)
+            db.add(profile)
+        profile.base_resume_text = text
+        await db.commit()
+
+    return {"content": text, "filename": filename, "saved": save}
+
 
 @router.get("", response_model=dict)
 async def get_base_resume(

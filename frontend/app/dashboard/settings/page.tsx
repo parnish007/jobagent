@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, KeyboardEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Save, Bot, Search, Cpu } from "lucide-react";
+import { Save, Bot, Search, Cpu, Target, X } from "lucide-react";
 
 const LLM_OPTIONS = [
   {
@@ -28,7 +28,7 @@ const JOB_TYPE_OPTIONS = [
   { value: "remote", label: "Remote" },
 ];
 
-const SITE_OPTIONS = ["linkedin", "indeed", "glassdoor", "zip_recruiter"];
+const SITE_OPTIONS = ["linkedin", "indeed", "glassdoor", "zip_recruiter", "google"];
 
 export default function SettingsPage() {
   const qc = useQueryClient();
@@ -36,6 +36,10 @@ export default function SettingsPage() {
     queryKey: ["profile"],
     queryFn: () => api.get("/auth/profile").then((r) => r.data),
   });
+
+  // Target roles (chip-based)
+  const [targetRoles, setTargetRoles] = useState<string[]>([]);
+  const [roleInput, setRoleInput] = useState("");
 
   // Job preferences
   const [titles, setTitles] = useState("");
@@ -60,6 +64,7 @@ export default function SettingsPage() {
   // Populate from loaded profile
   useEffect(() => {
     if (!profile) return;
+    setTargetRoles(profile.target_titles || []);
     setTitles((profile.target_titles || []).join(", "));
     setLocations((profile.target_locations || []).join(", "));
     setSkills((profile.skills || []).join(", "));
@@ -79,7 +84,7 @@ export default function SettingsPage() {
   const save = useMutation({
     mutationFn: () =>
       api.put("/auth/profile", {
-        target_titles: titles.split(",").map((s) => s.trim()).filter(Boolean),
+        target_titles: targetRoles.length ? targetRoles : titles.split(",").map((s) => s.trim()).filter(Boolean),
         target_locations: locations.split(",").map((s) => s.trim()).filter(Boolean),
         skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
         salary_min: salaryMin ? parseInt(salaryMin) : null,
@@ -101,6 +106,21 @@ export default function SettingsPage() {
     setSearchSites((prev) =>
       prev.includes(site) ? prev.filter((s) => s !== site) : [...prev, site]
     );
+  };
+
+  const addRole = (raw: string) => {
+    const role = raw.trim();
+    if (role && !targetRoles.includes(role)) setTargetRoles((prev) => [...prev, role]);
+    setRoleInput("");
+  };
+
+  const removeRole = (role: string) => setTargetRoles((prev) => prev.filter((r) => r !== role));
+
+  const onRoleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addRole(roleInput); }
+    if (e.key === "Backspace" && !roleInput && targetRoles.length) {
+      setTargetRoles((prev) => prev.slice(0, -1));
+    }
   };
 
   const section = (title: string, icon: React.ReactNode, children: React.ReactNode) => (
@@ -152,6 +172,40 @@ export default function SettingsPage() {
       {save.isSuccess && (
         <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 text-sm text-emerald-400">
           ✓ Settings saved successfully
+        </div>
+      )}
+
+      {/* Target Roles */}
+      {section("Target Roles", <Target size={16} className="text-rose-400" />,
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Specify the exact roles you&apos;re targeting. The AI uses these for scoring relevance and for the default search.
+            Press <kbd className="px-1 py-0.5 rounded bg-secondary text-xs">Enter</kbd> or <kbd className="px-1 py-0.5 rounded bg-secondary text-xs">,</kbd> after each role.
+          </p>
+          {/* Chip input */}
+          <div className="flex flex-wrap gap-2 min-h-[42px] rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-violet-500/40 cursor-text"
+            onClick={() => (document.getElementById("role-input") as HTMLInputElement)?.focus()}>
+            {targetRoles.map((role) => (
+              <span key={role} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-300">
+                {role}
+                <button type="button" onClick={(e) => { e.stopPropagation(); removeRole(role); }} className="hover:text-rose-100">
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+            <input
+              id="role-input"
+              className="flex-1 min-w-[160px] bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              placeholder={targetRoles.length ? "Add another role…" : "e.g. Senior Backend Engineer, ML Engineer…"}
+              value={roleInput}
+              onChange={(e) => setRoleInput(e.target.value)}
+              onKeyDown={onRoleKeyDown}
+              onBlur={() => roleInput.trim() && addRole(roleInput)}
+            />
+          </div>
+          {targetRoles.length > 0 && (
+            <p className="text-xs text-muted-foreground">{targetRoles.length} role{targetRoles.length !== 1 ? "s" : ""} targeted</p>
+          )}
         </div>
       )}
 
@@ -246,7 +300,6 @@ export default function SettingsPage() {
       {/* Job preferences */}
       {section("Job Preferences", <Bot size={16} className="text-amber-400" />,
         <div className="space-y-4">
-          {field("Target job titles", input(titles, setTitles, "Software Engineer, Backend Developer"), "Comma-separated")}
           {field("Preferred locations", input(locations, setLocations, "Remote, New York, London"), "Comma-separated")}
           {field("Your skills", input(skills, setSkills, "Python, React, PostgreSQL"), "Used for scoring — be comprehensive")}
           <div className="grid grid-cols-2 gap-4">

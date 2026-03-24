@@ -1,8 +1,8 @@
 # ─── Environment & secrets ───────────────────────────────────────────────────
 .env
 .env.*
-!.env.example
-docker/.env
+!.env.example          # keep example files
+frontend/.env.local    # frontend secrets (NEXT_PUBLIC_*)
 *.key
 *.pem
 

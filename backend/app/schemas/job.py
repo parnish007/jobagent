@@ -76,7 +76,7 @@ class ScoredJobRead(BaseModel):
 class ScrapeRequest(BaseModel):
     search_query: str
     location: str = "Remote"
-    sites: list[str] = ["linkedin", "indeed", "glassdoor"]
+    sites: list[str] = ["linkedin", "indeed", "glassdoor", "google"]
     results_wanted: int = 20
     job_type: Optional[Literal["full-time", "part-time", "internship", "contract", "remote"]] = None
     # Apply a preset which pre-fills job_type and search_suffix

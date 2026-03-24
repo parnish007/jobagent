@@ -1,27 +1,28 @@
 # ─── Web framework ────────────────────────────────────────────────────────────
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-python-multipart==0.0.9
+python-multipart==0.0.9          # File uploads (UploadFile)
 
 # ─── Database ────────────────────────────────────────────────────────────────
 sqlalchemy==2.0.35
-asyncpg==0.29.0
-psycopg2-binary==2.9.9
+asyncpg==0.29.0                  # Async PostgreSQL driver
+psycopg2-binary==2.9.9           # Sync driver (Alembic migrations)
 alembic==1.13.2
-pgvector==0.3.2
+pgvector==0.3.2                  # Vector similarity extension
 
 # ─── Auth / Security ─────────────────────────────────────────────────────────
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-slowapi==0.1.9          # Rate limiting
+python-jose[cryptography]==3.3.0 # JWT encoding / decoding
+passlib[bcrypt]==1.7.4           # Password hashing
+slowapi==0.1.9                   # Rate limiting
 
-# ─── Config ──────────────────────────────────────────────────────────────────
+# ─── Config / Validation ─────────────────────────────────────────────────────
 pydantic==2.9.2
 pydantic-settings==2.5.2
+email-validator==2.2.0           # Required for pydantic's EmailStr type
 
 # ─── Task queue ──────────────────────────────────────────────────────────────
 celery==5.4.0
-redis==5.0.8             # Includes redis.asyncio for pub/sub
+redis==5.0.8                     # redis.asyncio used for pub/sub WebSocket
 
 # ─── AI — Claude (Anthropic) ─────────────────────────────────────────────────
 anthropic==0.34.2
@@ -35,13 +36,15 @@ langchain-anthropic==0.2.4
 langchain-core==0.3.10
 
 # ─── Scraping ────────────────────────────────────────────────────────────────
-jobspy==1.1.80
-playwright==1.47.0
-playwright-stealth==1.0.6
+jobspy==1.1.80                   # LinkedIn, Indeed, Glassdoor, ZipRecruiter, Google Jobs
+pandas==2.2.3                    # jobspy returns DataFrames; directly imported
+playwright==1.47.0               # Browser automation for custom sites
+playwright-stealth==1.0.6        # Anti-bot detection bypass
 
 # ─── ML / RL / Embeddings ────────────────────────────────────────────────────
-sentence-transformers==3.1.1
-scikit-learn==1.5.2      # cosine_similarity for reward model
+sentence-transformers==3.1.1     # Reward model embeddings
+scikit-learn==1.5.2              # cosine_similarity for reward scoring
+numpy==1.26.4                    # Directly imported in rl/reward_model.py
 
 # DPO training — optional, only needed when running rl/dpo_trainer.py
 # Uncomment if you have a GPU and want to run DPO fine-tuning:
@@ -50,7 +53,15 @@ scikit-learn==1.5.2      # cosine_similarity for reward model
 # datasets==3.0.1
 # torch==2.4.1           # Install separately with CUDA support if available
 
+# ─── Resume parsing (PDF / DOCX uploads) ─────────────────────────────────────
+pypdf==4.3.1                     # PDF text extraction
+python-docx==1.1.2               # DOCX → Markdown conversion
+
+# ─── MCP server ──────────────────────────────────────────────────────────────
+mcp[cli]>=1.0.0
+fastmcp>=0.4.0
+
 # ─── Utilities ───────────────────────────────────────────────────────────────
 httpx==0.27.2
-tenacity==9.0.0
+tenacity==9.0.0                  # Retry logic for scrapers
 python-dotenv==1.0.1
