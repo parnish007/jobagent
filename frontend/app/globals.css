@@ -4,36 +4,159 @@
 
 @layer base {
   :root {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 1.2%;
-    --secondary: 222.2 47.4% 11.2%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
-    --ring: 216 34% 17%;
+    /* ── Surfaces ── */
+    --background:       240 14% 4%;      /* #080812 */
+    --surface:          240 13% 7%;      /* #0f0f1a */
+    --surface-2:        240 12% 10%;     /* #161624 */
+    --card:             240 13% 7%;
+    --card-foreground:  230 20% 92%;
+
+    /* ── Text ── */
+    --foreground:       230 20% 92%;     /* #e8e9f5 */
+    --muted-foreground: 230 10% 50%;     /* #787890 */
+
+    /* ── Borders & inputs ── */
+    --border:           240 14% 16%;     /* #1e1e38 */
+    --input:            240 14% 16%;
+    --ring:             262 80% 60%;
+
+    /* ── Brand (violet) ── */
+    --brand:            262 80% 60%;     /* #8b5cf6 */
+    --brand-dim:        262 70% 45%;     /* #6d28d9 */
+    --primary:          262 80% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    /* ── Semantic ── */
+    --secondary:        240 12% 12%;
+    --secondary-foreground: 230 20% 80%;
+    --muted:            240 12% 12%;
+    --accent:           240 14% 16%;
+    --accent-foreground: 230 20% 92%;
+    --destructive:      0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ── Radii ── */
     --radius: 0.5rem;
-    /* Brand accent */
-    --brand: 262 80% 60%;
+
+    /* ── Raw hex refs for JS/inline use ── */
+    --brand-hex: #8b5cf6;
+    --bg-hex: #080812;
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-syne), system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% -10%, hsl(262 80% 60% / 0.06) 0%, transparent 60%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='none'/%3E%3Cpath d='M0 40L40 0M-10 10L10 -10M30 50L50 30' stroke='%23ffffff' stroke-width='0.3' stroke-opacity='0.02'/%3E%3C/svg%3E");
+  }
+
+  /* Mono font for data/numbers */
+  .font-mono, [data-mono], .tabular-nums {
+    font-family: var(--font-mono), monospace;
+  }
 }
 
-/* Score color classes */
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--brand) / 0.5); }
+
+/* ── Score colors ───────────────────────────── */
 .score-high { @apply text-emerald-400; }
 .score-mid  { @apply text-amber-400; }
-.score-low  { @apply text-red-400; }
+.score-low  { @apply text-rose-400; }
 
-/* Kanban column */
-.kanban-col { @apply flex flex-col gap-3 min-h-[200px]; }
+/* ── Glow ring on focus ─────────────────────── */
+.ring-brand:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--brand) / 0.6);
+}
+
+/* ── Card hover glow ───────────────────────── */
+.card-hover {
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.card-hover:hover {
+  border-color: hsl(var(--brand) / 0.35);
+  box-shadow: 0 0 0 1px hsl(var(--brand) / 0.12), 0 8px 32px hsl(var(--brand) / 0.06);
+  transform: translateY(-1px);
+}
+
+/* ── Pulsing status dot ─────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+.pulse-dot { animation: pulse-dot 1.8s ease-in-out infinite; }
+
+/* ── Shimmer skeleton ───────────────────────── */
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--surface)) 25%,
+    hsl(var(--surface-2)) 50%,
+    hsl(var(--surface)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+/* ── Slide-in animations ───────────────────── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-slide-up        { animation: slide-up 0.35s ease both; }
+.animate-slide-in-right  { animation: slide-in-right 0.3s ease both; }
+.animate-fade-in         { animation: fade-in 0.25s ease both; }
+
+/* Staggered children */
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+
+/* ── Sidebar active gradient ───────────────── */
+.nav-active {
+  background: linear-gradient(90deg, hsl(var(--brand) / 0.15) 0%, transparent 100%);
+  border-left: 2px solid hsl(var(--brand));
+  color: hsl(var(--brand));
+}
+
+/* ── Gradient text ─────────────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 50%, #2dd4bf 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Score arc ─────────────────────────────── */
+.score-ring { transform-origin: center; transform: rotate(-90deg); }

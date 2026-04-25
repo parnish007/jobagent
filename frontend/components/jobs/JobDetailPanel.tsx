@@ -1,235 +1,340 @@
 "use client";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { X, ExternalLink, MapPin, Building2, DollarSign, Calendar, CheckCircle2, XCircle } from "lucide-react";
+import {
+  X,
+  ExternalLink,
+  MapPin,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  XCircle,
+  Briefcase,
+  DollarSign,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Job } from "./JobCard";
 
 interface JobDetailPanelProps {
-  jobId: string;
+  job: Job;
   onClose: () => void;
+  onAction?: (id: string, action: "approved" | "rejected") => void;
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  const cls =
-    score >= 75 ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
-    : score >= 55 ? "text-amber-400 bg-amber-400/10 border-amber-400/20"
-    : "text-red-400 bg-red-400/10 border-red-400/20";
+/* ── Large score ring (64 px) ──────────────────────────────── */
+function ScoreRingLarge({ score }: { score: number }) {
+  const size = 64;
+  const r = (size - 8) / 2;
+  const cx = size / 2;
+  const circumference = 2 * Math.PI * r;
+  const filled = (score / 100) * circumference;
+
+  const color =
+    score >= 75 ? "#34d399" : score >= 50 ? "#fbbf24" : "#fb7185";
+
   return (
-    <span className={cn("text-sm font-bold px-3 py-1 rounded-full border tabular-nums", cls)}>
-      {score} / 100
-    </span>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth={4} />
+      <circle
+        cx={cx}
+        cy={cx}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={4}
+        strokeLinecap="round"
+        strokeDasharray={`${filled} ${circumference}`}
+        style={{ transform: "rotate(-90deg)", transformOrigin: "center" }}
+      />
+      <text
+        x={cx}
+        y={cx - 2}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={15}
+        fontWeight="700"
+        fill={color}
+        fontFamily="var(--font-mono), monospace"
+      >
+        {score}
+      </text>
+      <text
+        x={cx}
+        y={cx + 11}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={7}
+        fill="hsl(var(--muted-foreground))"
+        fontFamily="var(--font-mono), monospace"
+      >
+        /100
+      </text>
+    </svg>
   );
 }
 
-export function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps) {
+/* ── Truncated description ──────────────────────────────────── */
+function TruncatedText({ text, limit = 400 }: { text: string; limit?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const short = text.length > limit;
+  const displayed = expanded || !short ? text : text.slice(0, limit) + "…";
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+        {displayed}
+      </p>
+      {short && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1 text-xs text-brand/70 hover:text-brand transition-colors"
+        >
+          {expanded ? (
+            <>Show less <ChevronUp size={11} /></>
+          ) : (
+            <>Show more <ChevronDown size={11} /></>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Section header ─────────────────────────────────────────── */
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <h4 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+      {children}
+    </h4>
+  );
+}
+
+/* ── JobDetailPanel ─────────────────────────────────────────── */
+export function JobDetailPanel({ job: initialJob, onClose, onAction }: JobDetailPanelProps) {
   const qc = useQueryClient();
 
-  const { data: job, isLoading } = useQuery({
-    queryKey: ["job", jobId],
-    queryFn: () => api.get(`/jobs/${jobId}`).then((r) => r.data),
-    enabled: !!jobId,
+  // Fetch fresh data for the job; fall back to the prop while loading
+  const { data: job = initialJob } = useQuery<Job>({
+    queryKey: ["job", initialJob.id],
+    queryFn: () => api.get(`/jobs/${initialJob.id}`).then((r) => r.data),
   });
 
   const approve = useMutation({
-    mutationFn: () => api.post(`/jobs/${jobId}/approve`),
+    mutationFn: () => api.put(`/jobs/${job.id}/approve`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["job", job.id] });
+      onAction?.(job.id, "approved");
       onClose();
     },
   });
 
   const reject = useMutation({
-    mutationFn: () => api.post(`/jobs/${jobId}/reject`),
+    mutationFn: () => api.put(`/jobs/${job.id}/reject`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
+      qc.invalidateQueries({ queryKey: ["job", job.id] });
+      onAction?.(job.id, "rejected");
       onClose();
     },
   });
+
+  const raw = job.raw_job;
+  const isPending = approve.isPending || reject.isPending;
+
+  const salaryText = (() => {
+    const sym = raw.salary_currency === "USD" ? "$" : (raw.salary_currency ?? "$");
+    if (raw.salary_min && raw.salary_max)
+      return `${sym}${Math.round(raw.salary_min / 1000)}k – ${sym}${Math.round(raw.salary_max / 1000)}k`;
+    if (raw.salary_min) return `${sym}${Math.round(raw.salary_min / 1000)}k+`;
+    if (raw.salary_max) return `up to ${sym}${Math.round(raw.salary_max / 1000)}k`;
+    return null;
+  })();
 
   return (
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-fade-in"
         onClick={onClose}
       />
 
-      {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-lg bg-card border-l border-border z-50 overflow-y-auto shadow-2xl">
-        {/* Header */}
-        <div className="sticky top-0 bg-card/95 backdrop-blur border-b border-border px-6 py-4 flex items-center justify-between">
-          <h2 className="font-semibold text-foreground">Job Details</h2>
+      {/* Slide-over panel */}
+      <div className="fixed inset-y-0 right-0 w-[480px] bg-surface border-l border-border z-50 flex flex-col animate-slide-in-right shadow-brand-lg">
+
+        {/* ── Header ─────────────────────────────────────── */}
+        <div className="shrink-0 border-b border-border px-5 py-4 flex items-start gap-4">
+          <ScoreRingLarge score={job.score} />
+          <div className="flex-1 min-w-0 pt-1">
+            <h2 className="text-base font-bold text-foreground leading-tight">
+              {raw.title}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1.5 truncate">
+              <Building2 size={12} />
+              {raw.company}
+            </p>
+            {raw.location && (
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 truncate">
+                <MapPin size={11} />
+                {raw.location}
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-accent transition-colors"
+            className="shrink-0 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors mt-0.5"
+            aria-label="Close panel"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {isLoading ? (
-          <div className="p-6 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-8 bg-secondary/50 rounded animate-pulse" />
-            ))}
+        {/* ── Scrollable body ─────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+
+          {/* Meta chips */}
+          <div className="flex flex-wrap gap-2">
+            {raw.employment_type && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-surface-2 border border-border text-muted-foreground capitalize">
+                <Briefcase size={10} />
+                {raw.employment_type.replace(/_/g, " ")}
+              </span>
+            )}
+            {raw.remote && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                Remote
+              </span>
+            )}
+            {salaryText && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-surface-2 border border-border text-muted-foreground font-mono">
+                <DollarSign size={10} />
+                {salaryText}
+              </span>
+            )}
+            {raw.posted_date && (
+              <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-surface-2 border border-border text-muted-foreground">
+                <Calendar size={10} />
+                {new Date(raw.posted_date).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            )}
           </div>
-        ) : !job ? (
-          <div className="p-6 text-center text-muted-foreground text-sm">Job not found.</div>
-        ) : (
-          <div className="p-6 space-y-6">
-            {/* Title + score */}
-            <div className="space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-lg font-bold text-foreground leading-tight">
-                  {job.raw_job?.title}
-                </h3>
-                <ScoreBadge score={job.score} />
-              </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Building2 size={13} />
-                  {job.raw_job?.company}
-                </span>
-                {job.raw_job?.location && (
-                  <span className="flex items-center gap-1.5">
-                    <MapPin size={13} />
-                    {job.raw_job.location}
-                  </span>
-                )}
-                {job.raw_job?.posted_date && (
-                  <span className="flex items-center gap-1.5">
-                    <Calendar size={13} />
-                    {new Date(job.raw_job.posted_date).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex flex-wrap gap-2 text-xs">
-                {job.raw_job?.remote && (
-                  <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">
-                    Remote
-                  </span>
-                )}
-                {job.raw_job?.employment_type && (
-                  <span className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
-                    {job.raw_job.employment_type}
-                  </span>
-                )}
-                {(job.raw_job?.salary_min || job.raw_job?.salary_max) && (
-                  <span className="flex items-center gap-1 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
-                    <DollarSign size={10} />
-                    {job.raw_job.salary_min
-                      ? `$${Math.round(job.raw_job.salary_min / 1000)}k`
-                      : ""}
-                    {job.raw_job.salary_min && job.raw_job.salary_max ? " – " : ""}
-                    {job.raw_job.salary_max
-                      ? `$${Math.round(job.raw_job.salary_max / 1000)}k`
-                      : ""}
-                  </span>
-                )}
-                <span className="bg-secondary text-muted-foreground px-2 py-0.5 rounded-full capitalize">
-                  via {job.raw_job?.source}
-                </span>
+          {/* Score reasoning */}
+          {job.score_reasoning && (
+            <div className="space-y-1.5">
+              <SectionHeader>AI Assessment</SectionHeader>
+              <div className="border-l-2 border-brand/50 pl-4 py-1">
+                <p className="text-sm text-foreground/80 leading-relaxed italic">
+                  {job.score_reasoning}
+                </p>
               </div>
             </div>
+          )}
 
-            {/* AI Score Reasoning */}
-            {job.score_reasoning && (
-              <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-2">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  AI Assessment
-                </h4>
-                <p className="text-sm text-foreground leading-relaxed">{job.score_reasoning}</p>
+          {/* Matched skills */}
+          {(job.matched_skills?.length ?? 0) > 0 && (
+            <div>
+              <SectionHeader>
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle2 size={10} className="text-emerald-400" />
+                  Matched Skills
+                </span>
+              </SectionHeader>
+              <div className="flex flex-wrap gap-1.5">
+                {job.matched_skills!.map((skill) => (
+                  <span
+                    key={skill}
+                    className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+                  >
+                    {skill}
+                  </span>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Skills */}
-            {(job.matched_skills?.length > 0 || job.missing_skills?.length > 0) && (
-              <div className="space-y-3">
-                {job.matched_skills?.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <CheckCircle2 size={12} className="text-emerald-400" />
-                      Matched Skills
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {job.matched_skills.map((skill: string) => (
-                        <span key={skill} className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {job.missing_skills?.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                      <XCircle size={12} className="text-red-400" />
-                      Missing Skills
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {job.missing_skills.map((skill: string) => (
-                        <span key={skill} className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          {/* Missing skills */}
+          {(job.missing_skills?.length ?? 0) > 0 && (
+            <div>
+              <SectionHeader>
+                <span className="flex items-center gap-1.5">
+                  <XCircle size={10} className="text-rose-400" />
+                  Missing Skills
+                </span>
+              </SectionHeader>
+              <div className="flex flex-wrap gap-1.5">
+                {job.missing_skills!.map((skill) => (
+                  <span
+                    key={skill}
+                    className="text-xs px-2.5 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400"
+                  >
+                    {skill}
+                  </span>
+                ))}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Description */}
-            {job.raw_job?.description && (
-              <div className="space-y-2">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Job Description
-                </h4>
-                <div className="rounded-xl border border-border bg-secondary/10 p-4 max-h-64 overflow-y-auto">
-                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                    {job.raw_job.description}
-                  </p>
-                </div>
+          {/* Job description */}
+          {(raw as any).description && (
+            <div>
+              <SectionHeader>Job Description</SectionHeader>
+              <div className="rounded-lg border border-border bg-surface-2/50 p-4">
+                <TruncatedText text={(raw as any).description} limit={400} />
               </div>
-            )}
+            </div>
+          )}
+        </div>
 
-            {/* Actions */}
-            {job.status === "pending_review" && (
-              <div className="flex gap-3 pt-2">
-                <button
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600/15 text-emerald-400 text-sm font-medium hover:bg-emerald-600/25 border border-emerald-600/20 transition-colors disabled:opacity-50"
-                  onClick={() => approve.mutate()}
-                  disabled={approve.isPending || reject.isPending}
-                >
-                  <CheckCircle2 size={15} />
-                  Approve
-                </button>
-                <button
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-600/15 text-red-400 text-sm font-medium hover:bg-red-600/25 border border-red-600/20 transition-colors disabled:opacity-50"
-                  onClick={() => reject.mutate()}
-                  disabled={approve.isPending || reject.isPending}
-                >
-                  <XCircle size={15} />
-                  Reject
-                </button>
-              </div>
+        {/* ── Sticky footer ───────────────────────────────── */}
+        <div className="shrink-0 border-t border-border px-5 py-4 flex gap-2.5">
+          {/* Approve */}
+          <button
+            onClick={() => approve.mutate()}
+            disabled={isPending}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors",
+              "bg-brand hover:bg-brand-dim text-white disabled:opacity-50"
             )}
+          >
+            <CheckCircle2 size={14} />
+            {approve.isPending ? "Approving…" : "Approve"}
+          </button>
 
-            {/* View original */}
-            {job.raw_job?.url && (
-              <a
-                href={job.raw_job.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors"
-              >
-                <ExternalLink size={14} />
-                View Original Listing
-              </a>
+          {/* Reject */}
+          <button
+            onClick={() => reject.mutate()}
+            disabled={isPending}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors",
+              "border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 disabled:opacity-50"
             )}
-          </div>
-        )}
+          >
+            <XCircle size={14} />
+            {reject.isPending ? "Rejecting…" : "Reject"}
+          </button>
+
+          {/* View original */}
+          <a
+            href={raw.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              "flex items-center justify-center px-3 py-2.5 rounded-xl text-sm transition-colors",
+              "border border-border text-muted-foreground hover:text-foreground hover:border-brand/40"
+            )}
+            aria-label="View original listing"
+          >
+            <ExternalLink size={14} />
+          </a>
+        </div>
       </div>
     </>
   );
