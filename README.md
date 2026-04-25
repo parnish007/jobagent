@@ -23,26 +23,21 @@
 
 ## What it does
 
-```
-Scrape 50 jobs          AI scores 0-100          YOU approve/reject
-   (5 boards)    →    against your profile    →   in the dashboard
-                                                         │
-                                             ┌───────────▼──────────────┐
-                                             │  GATE 1: Job Review      │
-                                             │  Nothing moves forward   │
-                                             │  without your approval   │
-                                             └───────────┬──────────────┘
-                                                         │
-                                               AI writes tailored
-                                               resume per approved job
-                                                         │
-                                             ┌───────────▼──────────────┐
-                                             │  GATE 2: Resume Review   │
-                                             │  Edit, refine, approve   │
-                                             │  before anything submits │
-                                             └───────────┬──────────────┘
-                                                         │
-                                               Auto-submit applications
+```mermaid
+flowchart TD
+    A["🔍 Scrape 50 Jobs\n5 boards in parallel"] --> B["🤖 AI Scores Each Job\n0–100 vs your profile"]
+    B --> C{"⛔ GATE 1\nJob Review"}
+    C -->|"❌ Reject"| D["🗑️ Dismissed"]
+    C -->|"✅ Approve"| E["📝 AI Writes Tailored Resume\nper approved job"]
+    E --> F{"⛔ GATE 2\nResume Review"}
+    F -->|"✏️ Edit"| E
+    F -->|"✅ Approve"| G["🚀 Auto-Submit Application"]
+    G --> H["📊 Track in Kanban\nApplications Dashboard"]
+
+    style C fill:#7C3AED,color:#fff,stroke:#5B21B6
+    style F fill:#7C3AED,color:#fff,stroke:#5B21B6
+    style D fill:#374151,color:#9CA3AF,stroke:#4B5563
+    style G fill:#059669,color:#fff,stroke:#047857
 ```
 
 **Two mandatory human gates.** The agent never submits anything without your explicit approval — not once, not ever.
@@ -216,55 +211,54 @@ python server.py
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────┐
-│           Next.js 14 Dashboard              │
-│  Jobs · Applications · Resume · Analytics  │
-└──────────────────┬──────────────────────────┘
-                   │ REST + WebSocket
-┌──────────────────▼──────────────────────────┐
-│              FastAPI Backend                │
-│        auth · jobs · resume · agent · RL   │
-└───────────┬──────────────────┬──────────────┘
-            │ Celery tasks     │ async/await
-┌───────────▼──────────────────▼──────────────┐
-│           LangGraph Agent Graph             │
-│                                             │
-│  scrape → score → [GATE 1: job review]      │
-│  → generate resumes → [GATE 2: resume review│
-│  → submit applications                      │
-└───────────┬──────────────────┬──────────────┘
-            │                  │
-┌───────────▼────────┐  ┌──────▼──────────────┐
-│  Scraping Layer    │  │   LLM Providers     │
-│  JobSpy (5 boards) │  │   Claude · Gemini   │
-│  Playwright        │  └─────────────────────┘
-└───────────┬────────┘
-            │
-┌───────────▼──────────────────────────────────┐
-│  Data Layer                                  │
-│  PostgreSQL 16 + pgvector  ·  Redis          │
-└──────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    UI["🖥️ Next.js 14 Dashboard\nJobs · Applications · Resume · Analytics"]
+    API["⚡ FastAPI Backend\nauth · jobs · resume · agent · RL"]
+    AGENT["🧠 LangGraph Agent\nMemorySaver checkpointing"]
+    CELERY["⚙️ Celery + Redis\nAsync task queue"]
+    SCRAPER["🕷️ Scraping Layer\nJobSpy · Playwright stealth"]
+    LLM["🤖 LLM Providers\nClaude Sonnet 4.6 · Gemini 2.0 Flash"]
+    DB["🗄️ Data Layer\nPostgreSQL 16 + pgvector · Redis"]
+
+    UI -->|"REST + WebSocket"| API
+    API -->|"Celery tasks"| CELERY
+    API -->|"async/await"| AGENT
+    CELERY --> AGENT
+    AGENT --> SCRAPER
+    AGENT --> LLM
+    SCRAPER --> DB
+    API --> DB
+
+    style UI fill:#1E1B4B,color:#C4B5FD,stroke:#4C1D95
+    style API fill:#1E3A5F,color:#93C5FD,stroke:#1E40AF
+    style AGENT fill:#1C3829,color:#6EE7B7,stroke:#065F46
+    style LLM fill:#3B1F2B,color:#F9A8D4,stroke:#9D174D
+    style DB fill:#1F2937,color:#D1D5DB,stroke:#374151
+    style CELERY fill:#292524,color:#FCD34D,stroke:#92400E
+    style SCRAPER fill:#1E1B4B,color:#A5B4FC,stroke:#3730A3
 ```
 
 ### Agent graph
 
-```
-[START] → scrape_jobs → score_jobs
-                             │
-             ┌───────────────▼───────────────────┐
-             │   INTERRUPT: human_job_review      │
-             │   User approves / rejects in UI    │
-             └───────────────┬───────────────────┘
-                             │
-                      generate_resumes
-                             │
-             ┌───────────────▼───────────────────┐
-             │   INTERRUPT: human_resume_review   │
-             │   User reviews / edits resumes     │
-             └───────────────┬───────────────────┘
-                             │
-                  submit_applications → [END]
+```mermaid
+flowchart TD
+    START(["▶ START"]) --> SCRAPE["🕷️ scrape_jobs\nJobSpy across 5 boards"]
+    SCRAPE --> SCORE["🤖 score_jobs\nClaude or Gemini rates 0–100"]
+    SCORE --> GATE1{{"⛔ INTERRUPT\nhuman_job_review"}}
+    GATE1 -->|"✅ Approved jobs"| RESUME["📝 generate_resumes\nTailored per job"]
+    GATE1 -->|"❌ Rejected"| DISCARD(["🗑️ Dismissed"])
+    RESUME --> GATE2{{"⛔ INTERRUPT\nhuman_resume_review"}}
+    GATE2 -->|"✏️ Edit requested"| RESUME
+    GATE2 -->|"✅ Approved"| SUBMIT["🚀 submit_applications\nBrowser automation"]
+    SUBMIT --> END(["🏁 END"])
+
+    style GATE1 fill:#7C3AED,color:#fff,stroke:#5B21B6
+    style GATE2 fill:#7C3AED,color:#fff,stroke:#5B21B6
+    style START fill:#059669,color:#fff,stroke:#047857
+    style END fill:#059669,color:#fff,stroke:#047857
+    style DISCARD fill:#374151,color:#9CA3AF,stroke:#4B5563
+    style SUBMIT fill:#1D4ED8,color:#fff,stroke:#1E40AF
 ```
 
 State is persisted via `MemorySaver` — the agent resumes from any checkpoint if the server restarts mid-run.
