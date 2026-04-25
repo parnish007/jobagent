@@ -113,26 +113,24 @@ async def _call_gemini(
     system_prompt: Optional[str],
 ) -> str:
     try:
-        import google.generativeai as genai  # type: ignore
+        from google import genai  # type: ignore
+        from google.genai import types as genai_types  # type: ignore
     except ImportError:
-        raise LLMError("google-generativeai package not installed. Run: pip install google-generativeai")
+        raise LLMError("google-genai package not installed. Run: pip install google-genai")
 
     if not settings.GEMINI_API_KEY:
         raise LLMError("GEMINI_API_KEY is not set in environment.")
 
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-
-    generation_config = genai.GenerationConfig(max_output_tokens=max_tokens)
-
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
     model_name = model or settings.DEFAULT_GEMINI_MODEL
-    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    contents = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
 
     try:
-        gemini_model = genai.GenerativeModel(
-            model_name=model_name,
-            generation_config=generation_config,
+        response = await client.aio.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=genai_types.GenerateContentConfig(max_output_tokens=max_tokens),
         )
-        response = await gemini_model.generate_content_async(full_prompt)
         return response.text
     except Exception as e:
         raise LLMError(f"Gemini API error: {e}") from e

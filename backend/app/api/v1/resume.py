@@ -219,14 +219,13 @@ async def update_resume_version(
             generation_prompt=version.generation_prompt,
         )
         db.add(original_version)
-        await db.flush()
+        await db.commit()  # commit original_version before new session FK reference
         await collect_preference_pair(
             user_id=str(current_user.id),
             chosen_version_id=str(version_id),
             rejected_version_id=str(original_version.id),
             signal_type="edit",
         )
-        await db.commit()
 
     return {"message": "Resume updated", "user_edited": True}
 

@@ -67,3 +67,6 @@ docker/redis-data/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# ─── Generated / misc ────────────────────────────────────────────────────────
+job_agent.html
