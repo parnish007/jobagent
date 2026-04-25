@@ -6,7 +6,6 @@ import { api } from "@/lib/api";
 import {
   Bot,
   Check,
-  ChevronRight,
   Cpu,
   Loader2,
   Pause,

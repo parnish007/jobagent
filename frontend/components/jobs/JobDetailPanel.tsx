@@ -123,7 +123,7 @@ export function JobDetailPanel({ job: initialJob, onClose, onAction }: JobDetail
   });
 
   const approve = useMutation({
-    mutationFn: () => api.put(`/jobs/${job.id}/approve`),
+    mutationFn: () => api.post(`/jobs/${job.id}/approve`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["job", job.id] });
@@ -133,7 +133,7 @@ export function JobDetailPanel({ job: initialJob, onClose, onAction }: JobDetail
   });
 
   const reject = useMutation({
-    mutationFn: () => api.put(`/jobs/${job.id}/reject`),
+    mutationFn: () => api.post(`/jobs/${job.id}/reject`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["job", job.id] });
