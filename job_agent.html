@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Agent — The Story Behind It</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a08;
+    --surface: #111110;
+    --surface2: #1a1a18;
+    --border: #2a2a26;
+    --accent: #c8f040;
+    --accent2: #f0c040;
+    --accent3: #40c8f0;
+    --text: #e8e8e0;
+    --text-muted: #888880;
+    --text-dim: #555550;
+    --red: #f04060;
+    --serif: 'Instrument Serif', Georgia, serif;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+
+  /* ─── NOISE TEXTURE ─── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.4;
+  }
+
+  /* ─── SCROLLBAR ─── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+  /* ─── PROGRESS BAR ─── */
+  #progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--accent);
+    z-index: 999;
+    width: 0%;
+    transition: width 0.1s linear;
+    box-shadow: 0 0 12px var(--accent);
+  }
+
+  /* ─── NAV ─── */
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(10,10,8,0.95) 60%, transparent);
+    backdrop-filter: blur(2px);
+  }
+
+  .nav-logo {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .nav-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 clamp(24px, 6vw, 120px) clamp(60px, 10vh, 100px);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.3;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 30%, transparent 100%);
+  }
+
+  .hero-orb {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,240,64,0.08) 0%, transparent 70%);
+    top: -100px;
+    right: -100px;
+    animation: orb-pulse 6s ease-in-out infinite;
+  }
+
+  .hero-orb-2 {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(64,200,240,0.05) 0%, transparent 70%);
+    bottom: 0;
+    left: 10%;
+    animation: orb-pulse 8s ease-in-out infinite reverse;
+  }
+
+  @keyframes orb-pulse {
+    0%, 100% { transform: scale(1) translate(0,0); opacity: 1; }
+    50% { transform: scale(1.1) translate(20px, -20px); opacity: 0.7; }
+  }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 24px;
+    opacity: 0;
+    animation: fade-up 0.8s 0.2s forwards;
+  }
+
+  .hero-title {
+    font-family: var(--serif);
+    font-size: clamp(48px, 8vw, 110px);
+    line-height: 0.95;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 12px;
+    opacity: 0;
+    animation: fade-up 0.8s 0.4s forwards;
+  }
+
+  .hero-title em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-subtitle {
+    font-family: var(--sans);
+    font-size: clamp(13px, 1.5vw, 16px);
+    font-weight: 400;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+    max-width: 500px;
+    margin-top: 20px;
+    opacity: 0;
+    animation: fade-up 0.8s 0.6s forwards;
+  }
+
+  .hero-stats {
+    display: flex;
+    gap: 40px;
+    margin-top: 48px;
+    opacity: 0;
+    animation: fade-up 0.8s 0.8s forwards;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stat-num {
+    font-family: var(--sans);
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ─── SCROLL INDICATOR ─── */
+  .scroll-hint {
+    position: absolute;
+    bottom: 30px;
+    right: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    animation: fade-up 1s 1.2s both;
+  }
+
+  .scroll-line {
+    width: 40px;
+    height: 1px;
+    background: var(--text-dim);
+    animation: scroll-line 2s ease-in-out infinite;
+  }
+
+  @keyframes scroll-line {
+    0%, 100% { transform: scaleX(1); transform-origin: left; }
+    50% { transform: scaleX(0.3); transform-origin: left; }
+  }
+
+  /* ─── MAIN CONTENT ─── */
+  main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 clamp(24px, 6vw, 60px);
+  }
+
+  /* ─── SECTION HEADERS ─── */
+  .section-break {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 80px 0 40px;
+  }
+
+  .section-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    padding: 4px 10px;
+    border: 1px solid rgba(200,240,64,0.3);
+    border-radius: 2px;
+  }
+
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--border), transparent);
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    margin-bottom: 24px;
+  }
+
+  h2 em {
+    font-style: italic;
+    color: var(--accent2);
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent3);
+    margin: 48px 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  h3::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(64,200,240,0.2);
+    max-width: 60px;
+  }
+
+  p {
+    color: var(--text);
+    margin-bottom: 20px;
+    opacity: 0.9;
+  }
+
+  /* ─── PROBLEMS BLOCK ─── */
+  .problems {
+    margin: 40px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .problem-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--red);
+    padding: 20px 24px;
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s ease, border-color 0.3s ease;
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  .problem-card.visible {
+    animation: slide-in 0.5s forwards;
+  }
+
+  .problem-card:nth-child(2) { animation-delay: 0.1s; }
+  .problem-card:nth-child(3) { animation-delay: 0.2s; }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .problem-card:hover {
+    transform: translateX(4px);
+    border-left-color: var(--accent);
+  }
+
+  .problem-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 100px;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(240,64,96,0.03));
+  }
+
+  .problem-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 8px;
+  }
+
+  .problem-card p {
+    margin: 0;
+    font-size: 15px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  /* ─── QUOTE ─── */
+  .pull-quote {
+    margin: 60px -20px;
+    padding: 40px 40px;
+    background: var(--surface);
+    border-top: 1px solid var(--accent);
+    border-bottom: 1px solid var(--accent);
+    position: relative;
+  }
+
+  .pull-quote::before {
+    content: '"';
+    position: absolute;
+    top: -20px;
+    left: 30px;
+    font-family: var(--serif);
+    font-size: 80px;
+    color: var(--accent);
+    line-height: 1;
+    opacity: 0.4;
+  }
+
+  .pull-quote p {
+    font-family: var(--serif);
+    font-size: clamp(20px, 3vw, 28px);
+    font-style: italic;
+    line-height: 1.4;
+    color: var(--text);
+    margin: 0;
+    opacity: 1;
+  }
+
+  .pull-quote-attr {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-top: 16px;
+  }
+
+  /* ─── CODE BLOCKS ─── */
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 24px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 28px 0;
+    position: relative;
+  }
+
+  pre::before {
+    content: attr(data-lang);
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    opacity: 0.6;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--accent3);
+  }
+
+  p code {
+    background: var(--surface2);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 14px;
+    color: var(--accent2);
+    border: 1px solid var(--border);
+  }
+
+  /* ─── ARCHITECTURE STEPS ─── */
+  .steps {
+    margin: 40px 0;
+    position: relative;
+  }
+
+  .steps::before {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 30px;
+    bottom: 30px;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--accent), var(--accent3), transparent);
+    opacity: 0.4;
+  }
+
+  .step {
+    display: flex;
+    gap: 24px;
+    padding: 20px 0;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+
+  .step.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .step-num {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    box-shadow: 0 0 20px rgba(200,240,64,0.1);
+  }
+
+  .step-body { flex: 1; }
+
+  .step-title {
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .step-title span {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .step-body p {
+    font-size: 15px;
+    color: var(--text-muted);
+    line-height: 1.65;
+    margin: 0;
+  }
+
+  /* ─── GATE DIAGRAM ─── */
+  .gate-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 40px;
+    margin: 40px 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .gate-diagram::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+  }
+
+  .gate-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    flex-wrap: wrap;
+    row-gap: 16px;
+  }
+
+  .gate-node {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 12px 18px;
+    border-radius: 4px;
+    text-align: center;
+    min-width: 90px;
+    transition: all 0.3s ease;
+  }
+
+  .gate-node:hover {
+    border-color: var(--accent3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+
+  .gate-node.human {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(200,240,64,0.1);
+  }
+
+  .gate-node-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+
+  .gate-node-name {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .gate-node.human .gate-node-name { color: var(--accent); }
+
+  .gate-arrow {
+    width: 40px;
+    height: 1px;
+    background: var(--border);
+    position: relative;
+    margin: 0 -1px;
+  }
+
+  .gate-arrow::after {
+    content: '▶';
+    position: absolute;
+    right: -6px;
+    top: -7px;
+    font-size: 8px;
+    color: var(--text-dim);
+  }
+
+  /* ─── NUMBERS GRID ─── */
+  .numbers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 2px;
+    margin: 40px 0;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .number-cell {
+    background: var(--surface);
+    padding: 24px 20px;
+    transition: background 0.2s ease;
+  }
+
+  .number-cell:hover { background: var(--surface2); }
+
+  .number-big {
+    font-family: var(--sans);
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .number-cell:nth-child(even) .number-big { color: var(--accent3); }
+  .number-cell:nth-child(3n) .number-big { color: var(--accent2); }
+
+  .number-desc {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  /* ─── PRIDE / REGRET LISTS ─── */
+  .eval-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 40px 0;
+  }
+
+  @media (max-width: 600px) {
+    .eval-grid { grid-template-columns: 1fr; }
+  }
+
+  .eval-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 28px;
+  }
+
+  .eval-col-title {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .eval-col-title.proud { color: var(--accent); }
+  .eval-col-title.regret { color: var(--red); }
+
+  .eval-item {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .eval-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-top: 7px;
+    flex-shrink: 0;
+  }
+
+  .proud .eval-dot { background: var(--accent); }
+  .regret .eval-dot { background: var(--red); }
+
+  /* ─── NEXT UP ─── */
+  .roadmap {
+    margin: 40px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .roadmap-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: all 0.3s ease;
+    cursor: default;
+  }
+
+  .roadmap-item:hover {
+    border-color: var(--accent3);
+    transform: translateX(4px);
+    background: var(--surface2);
+  }
+
+  .roadmap-icon {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent3);
+    padding-top: 2px;
+    flex-shrink: 0;
+    width: 20px;
+  }
+
+  .roadmap-text {
+    font-size: 15px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .roadmap-text strong {
+    font-family: var(--sans);
+    font-weight: 600;
+    color: var(--text);
+    display: block;
+    font-size: 13px;
+    letter-spacing: 0.03em;
+    margin-bottom: 2px;
+  }
+
+  /* ─── FOOTER ─── */
+  footer {
+    margin-top: 120px;
+    padding: 60px clamp(24px, 6vw, 120px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 30px;
+  }
+
+  .footer-left {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-style: italic;
+    color: var(--text-muted);
+    max-width: 400px;
+    line-height: 1.3;
+  }
+
+  .footer-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+  }
+
+  .footer-author {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .github-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-decoration: none;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .github-link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.15);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .github-link:hover::before { transform: translateX(0); }
+  .github-link:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(200,240,64,0.25); }
+
+  /* ─── CURSOR GLOW ─── */
+  .cursor-glow {
+    position: fixed;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,240,64,0.04) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 998;
+    transform: translate(-50%, -50%);
+    transition: left 0.1s ease, top 0.1s ease;
+  }
+
+  /* ─── REVEAL ANIMATION ─── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ─── SELECTION ─── */
+  ::selection {
+    background: rgba(200,240,64,0.2);
+    color: var(--accent);
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 480px) {
+    nav { padding: 16px 20px; }
+    .hero { padding-bottom: 60px; }
+    .pull-quote { margin: 40px -24px; }
+    .gate-flow { flex-direction: column; align-items: center; }
+    .gate-arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+<div class="cursor-glow" id="cursorGlow"></div>
+
+<nav>
+  <div class="nav-logo">Job Agent</div>
+  <div class="nav-meta">Case Study · 2024</div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-orb"></div>
+  <div class="hero-orb-2"></div>
+
+  <div class="hero-eyebrow">A first-year CS student × a broken job search</div>
+  <div class="hero-title">The Story<br><em>Behind It</em></div>
+  <div class="hero-subtitle">How frustration with rejection emails became a full-stack agentic AI system.</div>
+
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-num">~100</div><div class="stat-label">files</div></div>
+    <div class="stat"><div class="stat-num">11</div><div class="stat-label">DB tables</div></div>
+    <div class="stat"><div class="stat-num">5</div><div class="stat-label">job boards</div></div>
+    <div class="stat"><div class="stat-num">2</div><div class="stat-label">human gates</div></div>
+    <div class="stat"><div class="stat-num">0</div><div class="stat-label">unreviewed submits</div></div>
+  </div>
+
+  <div class="scroll-hint">
+    <div class="scroll-line"></div>
+    <span>scroll</span>
+  </div>
+</section>
+
+<!-- MAIN -->
+<main>
+
+  <!-- ORIGIN -->
+  <div class="section-break reveal">
+    <div class="section-num">01</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">It started with rejection emails<br><em>I couldn't explain</em></h2>
+
+  <p class="reveal">First year of CS. Everyone around me is applying for internships. I start doing the same. Find a job posting, copy-paste your resume, tweak the summary to mention the company name, hit apply, wait. Get a rejection. Don't know why. Try again.</p>
+
+  <p class="reveal">After a few weeks of this, I had three problems that were genuinely bothering me:</p>
+
+  <div class="problems">
+    <div class="problem-card">
+      <div class="problem-label">Problem 01</div>
+      <p>I had no idea what was a good fit. Every job posting looks the same when you're reading ten a day. I couldn't tell which roles were worth applying to versus which were a waste of time.</p>
+    </div>
+    <div class="problem-card">
+      <div class="problem-label">Problem 02</div>
+      <p>My resume said the same thing to everyone. I knew you were supposed to tailor it to each job. I also knew that doing it properly would take an hour each time. So I didn't.</p>
+    </div>
+    <div class="problem-card">
+      <div class="problem-label">Problem 03</div>
+      <p>I had no idea where I'd applied. A spreadsheet. Then the spreadsheet got out of date. Then I genuinely didn't know if I'd already applied somewhere or not.</p>
+    </div>
+  </div>
+
+  <p class="reveal">I tried LinkedIn Easy Apply. Applied to 30 things in one afternoon. Heard back from zero of them. Faster rejection, same result.</p>
+
+  <div class="pull-quote reveal">
+    <p>What if I could automate the smart parts too — not just the clicking?</p>
+    <div class="pull-quote-attr">— The idea that started everything</div>
+  </div>
+
+  <!-- THE IDEA -->
+  <div class="section-break reveal">
+    <div class="section-num">02</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">The design principle:<br><em>AI does the boring work</em></h2>
+
+  <p class="reveal">I wanted a system that would go find relevant jobs every day, read each description and tell me whether I was a good fit, rewrite my resume for each role — not copy-paste, actually rewrite it — and let me review everything before doing anything real.</p>
+
+  <p class="reveal">That last point was important. I'd heard about people building bots that auto-apply to hundreds of jobs. That felt wrong. A real person made the decision to post that job. The least I could do was make a real decision to apply.</p>
+
+  <!-- WHAT I KNEW -->
+  <div class="section-break reveal">
+    <div class="section-num">03</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">What I knew going in: <em>not much</em></h2>
+
+  <p class="reveal">I was a first-year student. I'd done the intro Python course. I'd built a few small scripts. I knew what an API was in theory. I had never built a full-stack application. Never touched a database. Didn't know what async meant.</p>
+
+  <p class="reveal">I picked this project specifically because it would force me to learn things I didn't know yet. Simple enough — I was very wrong about the "simple" part.</p>
+
+  <!-- BUILD SEQUENCE -->
+  <div class="section-break reveal">
+    <div class="section-num">04</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">Building it: <em>the real order things happened</em></h2>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Getting jobs onto a screen <span>JobSpy + deduplication</span></div>
+        <p>Found a Python library called <code>JobSpy</code> that pulled listings from LinkedIn, Indeed, Glassdoor, and ZipRecruiter with a single function call. Then learned about hashing — <code>title + company + url</code> → SHA-256 → unique key. First real problem, first real solution.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Making the AI understand me <span>Rubric-based scoring</span></div>
+        <p>Built a user profile system with fields for skills, target roles, experience, and preferences. Discovered <code>get_llm_json()</code> — send the prompt, parse the response, retry if JSON comes back malformed. Built a scoring rubric: 40pts skills, 30pts seniority, 20pts domain, 10pts location. Suddenly a score of 72 meant something specific.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">The async wall <span>Concurrent LLM calls</span></div>
+        <p>Spent a week understanding the Python event loop. The mental model that finally clicked: async isn't about doing multiple things simultaneously, it's about not <em>waiting</em> while one thing finishes before starting the next. Rewrote the entire backend to be async. Learned <code>run_in_executor</code> for blocking sync libraries.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">The human gates <span>The important architectural decision</span></div>
+        <p>Used LangGraph's <code>interrupt_before</code> to literally pause execution at named nodes. State is saved to memory. When I come back and say "continue," it picks up exactly where it left off. Two mandatory stops: after scoring (I decide which to apply to), after resume generation (I read before it's submitted).</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <div class="step-title">Database design <span>PostgreSQL + pgvector</span></div>
+        <p>Key insight: separate raw scraped data from scored data. <code>raw_jobs</code> is never modified. <code>scored_jobs</code> links to it. If I improve the scoring model later, I can re-score existing raw jobs without touching the original data. Added <code>pgvector</code> for cheap cosine similarity instead of expensive LLM calls.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <div class="step-title">Real-time feedback <span>WebSockets + Redis pub/sub</span></div>
+        <p>Celery worker publishes events to Redis channel <code>agent:events:{'{user_id}'}</code>. FastAPI WebSocket subscribes and forwards to the browser. React component updates the UI. Falls back to polling every 5 seconds if WebSocket drops. Added a small WiFi icon to show which mode is active.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <div class="step-title">Resume generation + RL <span>DPO fine-tuning</span></div>
+        <p>The "do not fabricate" instruction was important to me. Every time I edited the AI's draft, I was giving feedback. Built a preference collection system — edited version is "chosen," original AI draft is "rejected." After 50 comparisons, trigger DPO fine-tuning on <code>flan-t5-base</code>. The infrastructure is there.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CODE SAMPLE -->
+  <pre data-lang="python"><code># JobSpy: scraping five boards with one call
+from jobspy import scrape_jobs
+import hashlib
+
+df = scrape_jobs(
+    site_name=["linkedin", "indeed", "glassdoor", "zip_recruiter", "google"],
+    search_term="ml engineer intern",
+    location="Remote"
+)
+
+# Deduplication via SHA-256 hash
+def make_fingerprint(job):
+    key = f"{job['title']}|{job['company']}|{job['job_url']}"
+    return hashlib.sha256(key.encode()).hexdigest()
+
+df['fingerprint'] = df.apply(make_fingerprint, axis=1)
+df = df.drop_duplicates(subset='fingerprint')</code></pre>
+
+  <!-- GATE DIAGRAM -->
+  <h3>The two-gate architecture</h3>
+
+  <div class="gate-diagram reveal">
+    <div class="gate-flow">
+      <div class="gate-node">
+        <div class="gate-node-label">step 1</div>
+        <div class="gate-node-name">Scrape</div>
+      </div>
+      <div class="gate-arrow"></div>
+      <div class="gate-node">
+        <div class="gate-node-label">step 2</div>
+        <div class="gate-node-name">Score</div>
+      </div>
+      <div class="gate-arrow"></div>
+      <div class="gate-node human">
+        <div class="gate-node-label">⏸ gate 1</div>
+        <div class="gate-node-name">You Review</div>
+      </div>
+      <div class="gate-arrow"></div>
+      <div class="gate-node">
+        <div class="gate-node-label">step 4</div>
+        <div class="gate-node-name">Generate CV</div>
+      </div>
+      <div class="gate-arrow"></div>
+      <div class="gate-node human">
+        <div class="gate-node-label">⏸ gate 2</div>
+        <div class="gate-node-name">You Approve</div>
+      </div>
+      <div class="gate-arrow"></div>
+      <div class="gate-node">
+        <div class="gate-node-label">step 6</div>
+        <div class="gate-node-name">Submit</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REFLECTION -->
+  <div class="section-break reveal">
+    <div class="section-num">05</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">What I'd change.<br><em>What I'm proud of.</em></h2>
+
+  <div class="eval-grid reveal">
+    <div class="eval-col">
+      <div class="eval-col-title proud">Proud of</div>
+      <div class="eval-item"><div class="eval-dot"></div><div>The two-gate architecture. It's a real design decision — architecturally impossible to submit without approval.</div></div>
+      <div class="eval-item"><div class="eval-dot"></div><div>The LLM abstraction. Switching providers is a settings change, not a code change.</div></div>
+      <div class="eval-item"><div class="eval-dot"></div><div>The real-time pipeline: Celery → Redis → FastAPI → browser. Graceful fallback to polling.</div></div>
+      <div class="eval-item"><div class="eval-dot"></div><div>Unified setup. One <code>.env.example</code>, one <code>requirements.txt</code>, one virtualenv.</div></div>
+    </div>
+    <div class="eval-col">
+      <div class="eval-col-title regret">Would change</div>
+      <div class="eval-item"><div class="eval-dot"></div><div>Use <code>AsyncPostgresSaver</code> instead of <code>MemorySaver</code> for LangGraph. State survives restarts.</div></div>
+      <div class="eval-item"><div class="eval-dot"></div><div>Write integration tests from day one. <code>pytest-asyncio</code> against a test database.</div></div>
+      <div class="eval-item"><div class="eval-dot"></div><div>Think harder about prompt structure earlier. Read about rubric scoring before writing version one.</div></div>
+    </div>
+  </div>
+
+  <!-- NUMBERS -->
+  <div class="section-break reveal">
+    <div class="section-num">06</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">The numbers</h2>
+
+  <div class="numbers-grid reveal">
+    <div class="number-cell">
+      <div class="number-big">~100</div>
+      <div class="number-desc">files across backend, frontend, MCP, docker, docs</div>
+    </div>
+    <div class="number-cell">
+      <div class="number-big">11</div>
+      <div class="number-desc">database tables</div>
+    </div>
+    <div class="number-cell">
+      <div class="number-big">5</div>
+      <div class="number-desc">job boards scraped</div>
+    </div>
+    <div class="number-cell">
+      <div class="number-big">2</div>
+      <div class="number-desc">LLM providers supported</div>
+    </div>
+    <div class="number-cell">
+      <div class="number-big">2</div>
+      <div class="number-desc">human review gates</div>
+    </div>
+    <div class="number-cell">
+      <div class="number-big">3</div>
+      <div class="number-desc">RL signal types (edit, rating, outcome)</div>
+    </div>
+    <div class="number-cell">
+      <div class="number-big">0</div>
+      <div class="number-desc">applications submitted without approval</div>
+    </div>
+  </div>
+
+  <!-- ROADMAP -->
+  <div class="section-break reveal">
+    <div class="section-num">07</div>
+    <div class="section-line"></div>
+  </div>
+
+  <h2 class="reveal">What's next</h2>
+
+  <div class="roadmap reveal">
+    <div class="roadmap-item">
+      <div class="roadmap-icon">→</div>
+      <div class="roadmap-text">
+        <strong>Workday / Greenhouse / Lever ATS</strong>
+        Most serious companies use proprietary ATS systems. Getting these right is the next major feature.
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">→</div>
+      <div class="roadmap-text">
+        <strong>Email / Slack notifications</strong>
+        When a high-score job appears, I want to know immediately — not just when I open the dashboard.
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">→</div>
+      <div class="roadmap-text">
+        <strong>Production deployment</strong>
+        Docker Compose for production, environment hardening, and a proper cloud setup guide.
+      </div>
+    </div>
+    <div class="roadmap-item">
+      <div class="roadmap-icon">→</div>
+      <div class="roadmap-text">
+        <strong>Multi-user support</strong>
+        Schema already scopes to <code>user_id</code>. Missing piece is a proper onboarding flow.
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-left">
+    "Pick a problem you actually have. Build the solution. You'll learn ten times more than any course."
+  </div>
+  <div class="footer-right">
+    <div class="footer-author">Built by a first-year CS student</div>
+    <a href="https://github.com/parnish007/jobagent" class="github-link" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+</footer>
+
+<script>
+  // ─── PROGRESS BAR ───
+  const progress = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const scrolled = window.scrollY;
+    const total = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.width = (scrolled / total * 100) + '%';
+  });
+
+  // ─── CURSOR GLOW ───
+  const glow = document.getElementById('cursorGlow');
+  window.addEventListener('mousemove', e => {
+    glow.style.left = e.clientX + 'px';
+    glow.style.top = e.clientY + 'px';
+  });
+
+  // ─── INTERSECTION OBSERVER ───
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('.reveal, .step, .problem-card').forEach(el => observer.observe(el));
+
+  // ─── STAGGERED STEPS ───
+  const steps = document.querySelectorAll('.step');
+  const stepObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        setTimeout(() => entry.target.classList.add('visible'), i * 80);
+      }
+    });
+  }, { threshold: 0.1 });
+  steps.forEach(s => stepObserver.observe(s));
+
+  // ─── ANIMATED COUNTERS ───
+  function animateCount(el, target, suffix = '') {
+    const duration = 1200;
+    const start = performance.now();
+    const isApprox = el.dataset.approx;
+    const update = (time) => {
+      const elapsed = Math.min((time - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - elapsed, 3);
+      const current = Math.floor(eased * target);
+      el.textContent = (isApprox ? '~' : '') + current + suffix;
+      if (elapsed < 1) requestAnimationFrame(update);
+      else el.textContent = (isApprox ? '~' : '') + target + suffix;
+    };
+    requestAnimationFrame(update);
+  }
+
+  const counterObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const el = entry.target;
+        const raw = el.textContent.replace('~', '');
+        const num = parseInt(raw);
+        if (!isNaN(num)) {
+          if (el.textContent.includes('~')) el.dataset.approx = true;
+          animateCount(el, num);
+          counterObserver.unobserve(el);
+        }
+      }
+    });
+  }, { threshold: 0.5 });
+
+  document.querySelectorAll('.number-big, .stat-num').forEach(el => {
+    counterObserver.observe(el);
+  });
+
+  // ─── PROBLEM CARDS STAGGER ───
+  const problemObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.2 });
+  document.querySelectorAll('.problem-card').forEach(c => problemObserver.observe(c));
+</script>
+
+</body>
+</html>
