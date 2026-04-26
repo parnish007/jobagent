@@ -1,7 +1,7 @@
 # ─── Environment & secrets ───────────────────────────────────────────────────
 .env
 .env.*
-!.env.example          # keep example files
+!.env.example          # keep the documented example file
 frontend/.env.local    # frontend secrets (NEXT_PUBLIC_*)
 *.key
 *.pem
@@ -20,12 +20,16 @@ pip-log.txt
 dist/
 build/
 .eggs/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+*.pyi.bak             # stub files emitted by generators (keep hand-written .pyi)
 
 # ─── Alembic ─────────────────────────────────────────────────────────────────
-# Keep migrations, ignore generated pycache inside
+# Keep migration scripts; ignore compiled bytecode inside the package
 backend/alembic/__pycache__/
 
-# ─── ML models (large binary files) ─────────────────────────────────────────
+# ─── ML models (large binary files — never commit these) ─────────────────────
 backend/models/
 *.bin
 *.safetensors
@@ -38,19 +42,25 @@ node_modules/
 frontend/.next/
 frontend/out/
 frontend/.vercel/
+frontend/.turbo/
+*.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# Lock files for package managers other than npm (uncomment the one you use)
+# yarn.lock
+# pnpm-lock.yaml
+# bun.lockb
 
-# ─── IDE ─────────────────────────────────────────────────────────────────────
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
-
-# ─── Playwright ──────────────────────────────────────────────────────────────
+# ─── Testing & coverage ──────────────────────────────────────────────────────
+# Python
+.coverage
+htmlcov/
+.pytest_cache/
+# JavaScript / TypeScript
+coverage/
+.nyc_output/
+# Playwright
 playwright-report/
 test-results/
 
@@ -59,14 +69,27 @@ test-results/
 celerybeat-schedule
 celerybeat.pid
 
-# ─── Docker volumes (local data) ─────────────────────────────────────────────
+# ─── Docker volumes (local bind-mount data) ──────────────────────────────────
 docker/postgres-data/
 docker/redis-data/
 
-# ─── Coverage / testing ──────────────────────────────────────────────────────
-.coverage
-htmlcov/
-.pytest_cache/
+# ─── IDE & editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.cursor/
 
-# ─── Generated / misc ────────────────────────────────────────────────────────
+# ─── OS artefacts ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ─── Miscellaneous generated / temporary files ───────────────────────────────
+*.bak
+*.tmp
+*.orig
 job_agent.html
